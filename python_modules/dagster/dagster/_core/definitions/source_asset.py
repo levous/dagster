@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Dict, Iterator, Mapping, Optional, Sequence, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Dict,
+    Iterator,
+    Mapping,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+)
 
 from typing_extensions import Protocol, TypeAlias
 
@@ -76,6 +86,7 @@ class SourceAsset(ResourceAddable):
             the asset when it's used as an input to other assets inside a job.
         io_manager_def (Optional[IOManagerDefinition]): (Experimental) The definition of the IOManager that will be used to load the contents of
             the asset when it's used as an input to other assets inside a job.
+        required_resource_keys (Optional[Set[str]]): Set of resource handles required by the observe op.
         resource_defs (Optional[Mapping[str, ResourceDefinition]]): (Experimental) resource definitions that may be required by the :py:class:`dagster.IOManagerDefinition` provided in the `io_manager_def` argument.
         description (Optional[str]): The description of the asset.
         partitions_def (Optional[PartitionsDefinition]): Defines the set of partition keys that
@@ -106,6 +117,7 @@ class SourceAsset(ResourceAddable):
         group_name: Optional[str] = None,
         resource_defs: Optional[Mapping[str, ResourceDefinition]] = None,
         observe_fn: Optional[SourceAssetObserveFunction] = None,
+        required_resource_keys: Optional[AbstractSet[str]] = None,
         # Add additional fields to with_resources and with_group below
     ):
         if resource_defs is not None:
@@ -145,6 +157,9 @@ class SourceAsset(ResourceAddable):
         self.group_name = validate_group_name(group_name)
         self.description = check.opt_str_param(description, "description")
         self.observe_fn = check.opt_callable_param(observe_fn, "observe_fn")
+        self._required_resource_keys = check.opt_set_param(
+            required_resource_keys, "required_resource_keys", of_type=str
+        )
         self._node_def = None
 
     @public
@@ -207,6 +222,11 @@ class SourceAsset(ResourceAddable):
 
         return DecoratedOpFunction(fn)
 
+    @public
+    @property
+    def required_resource_keys(self) -> AbstractSet[str]:
+        return {requirement.key for requirement in self.get_resource_requirements()}
+
     @property
     def node_def(self) -> Optional[OpDefinition]:
         """Op that generates observation metadata for a source asset."""
@@ -218,6 +238,7 @@ class SourceAsset(ResourceAddable):
                 compute_fn=self._get_op_def_compute_fn(self.observe_fn),
                 name=self.key.to_python_identifier(),
                 description=self.description,
+                required_resource_keys=self._required_resource_keys,
             )
         return self._node_def
 
@@ -269,6 +290,7 @@ class SourceAsset(ResourceAddable):
                 resource_defs=relevant_resource_defs,
                 group_name=self.group_name,
                 observe_fn=self.observe_fn,
+                required_resource_keys=self._required_resource_keys,
             )
 
     def with_group_name(self, group_name: str) -> "SourceAsset":
@@ -291,9 +313,12 @@ class SourceAsset(ResourceAddable):
                 group_name=group_name,
                 resource_defs=self.resource_defs,
                 observe_fn=self.observe_fn,
+                required_resource_keys=self._required_resource_keys,
             )
 
     def get_resource_requirements(self) -> Iterator[ResourceRequirement]:
+        if self.node_def is not None:
+            yield from self.node_def.get_resource_requirements()
         yield SourceAssetIOManagerRequirement(
             key=self.get_io_manager_key(), asset_key=self.key.to_string()
         )
