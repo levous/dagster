@@ -55,12 +55,6 @@ class AssetSelection(ABC):
 
     @public
     @staticmethod
-    def source_assets(*source_assets: SourceAsset) -> "KeysAssetSelection":
-        """Returns a selection that includes all of the provided source assets."""
-        return KeysAssetSelection(*(source_asset.key for source_asset in source_assets))
-
-    @public  # type: ignore
-    @staticmethod
     def keys(*asset_keys: CoercibleToAssetKey) -> "KeysAssetSelection":
         """Returns a selection that includes assets with any of the provided keys.
 

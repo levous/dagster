@@ -34,6 +34,7 @@ from dagster._core.definitions.resource_requirement import (
     ResourceAddable,
     ResourceRequirement,
     SourceAssetIOManagerRequirement,
+    ensure_requirements_satisfied,
     get_resource_key_conflicts,
 )
 from dagster._core.definitions.utils import (
@@ -257,6 +258,10 @@ class SourceAsset(ResourceAddable):
 
         merged_resource_defs = merge_dicts(resource_defs, self.resource_defs)
 
+        # Ensure top-level resource requirements are met - except for
+        # io_manager, since that is a default it can be resolved later.
+        ensure_requirements_satisfied(merged_resource_defs, list(self.get_resource_requirements()))
+
         io_manager_def = merged_resource_defs.get(self.get_io_manager_key())
         if not io_manager_def and self.get_io_manager_key() != DEFAULT_IO_MANAGER_KEY:
             raise DagsterInvalidDefinitionError(
@@ -264,7 +269,7 @@ class SourceAsset(ResourceAddable):
                 f" '{self.get_io_manager_key()}', but none was provided."
             )
         relevant_keys = get_transitive_required_resource_keys(
-            {self.get_io_manager_key()}, merged_resource_defs
+            {*self._required_resource_keys, self.get_io_manager_key()}, merged_resource_defs
         )
 
         relevant_resource_defs = {

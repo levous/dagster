@@ -33,7 +33,6 @@ from dagster import (
 )
 from dagster._config import StringSource
 from dagster._core.definitions import AssetGroup, AssetIn, SourceAsset, asset, build_assets_job
-from dagster._core.definitions.asset_selection import AssetSelection
 from dagster._core.definitions.assets_job import get_base_asset_jobs
 from dagster._core.definitions.dependency import NodeHandle
 from dagster._core.definitions.executor_definition import in_process_executor
