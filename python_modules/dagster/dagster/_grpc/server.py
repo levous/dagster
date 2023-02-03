@@ -921,7 +921,7 @@ class DagsterGrpcServer:
 
         self.server = grpc.server(
             ThreadPoolExecutor(
-                max_workers=max_workers,
+                max_workers=2,
                 thread_name_prefix="grpc-server-rpc-handler",
             ),
             compression=grpc.Compression.Gzip,
