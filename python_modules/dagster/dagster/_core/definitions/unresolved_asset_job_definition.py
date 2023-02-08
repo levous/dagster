@@ -230,7 +230,12 @@ def define_asset_job(
     name: str,
     selection: Optional[
         Union[
-            str, Sequence[str], Sequence[AssetKey], Sequence["AssetsDefinition"], "AssetSelection"
+            str,
+            Sequence[str],
+            Sequence[AssetKey],
+            Sequence["AssetsDefinition"],
+            Sequence["SourceAsset"],
+            "AssetSelection",
         ]
     ] = None,
     config: Optional[Union[ConfigMapping, Mapping[str, Any], "PartitionedConfig[object]"]] = None,
@@ -245,7 +250,7 @@ def define_asset_job(
     Args:
         name (str):
             The name for the job.
-        selection (Union[str, Sequence[str], Sequence[AssetKey], Sequence[AssetsDefinition], AssetSelection]):
+        selection (Union[str, Sequence[str], Sequence[AssetKey], Sequence[AssetsDefinition], Sequence[SourceAsset], AssetSelection]):
             The assets that will be materialized when the job is run.
 
             The selected assets must all be included in the assets that are passed to the assets
@@ -329,7 +334,7 @@ def define_asset_job(
                 resources={"slack_client": prod_slack_client},
             )
     """
-    from dagster._core.definitions import AssetsDefinition, AssetSelection
+    from dagster._core.definitions import AssetsDefinition, AssetSelection, SourceAsset
 
     # convert string-based selections to AssetSelection objects
     resolved_selection: AssetSelection
@@ -345,12 +350,17 @@ def define_asset_job(
         )
     elif isinstance(selection, list) and all(isinstance(el, AssetsDefinition) for el in selection):
         resolved_selection = AssetSelection.assets(*cast(Sequence[AssetsDefinition], selection))
+    elif isinstance(selection, list) and all(isinstance(el, SourceAsset) for el in selection):
+        resolved_selection = AssetSelection.keys(
+            *(el.key for el in cast(Sequence[SourceAsset], selection))
+        )
     elif isinstance(selection, list) and all(isinstance(el, AssetKey) for el in selection):
         resolved_selection = AssetSelection.keys(*cast(Sequence[AssetKey], selection))
     else:
         check.failed(
             "selection argument must be one of str, Sequence[str], Sequence[AssetKey],"
-            f" Sequence[AssetsDefinition], AssetSelection. Was {type(selection)}."
+            " Sequence[AssetsDefinition], Sequence[SourceAsset], AssetSelection. Was"
+            f" {type(selection)}."
         )
 
     return UnresolvedAssetJobDefinition(

@@ -265,15 +265,11 @@ class KeysAssetSelection(AssetSelection):
 
     def resolve_inner(self, asset_graph: AssetGraph) -> AbstractSet[AssetKey]:
         specified_keys = set(self._keys)
-        invalid_keys = {key for key in specified_keys if key not in asset_graph.all_asset_keys}
-        selected_source_asset_keys = specified_keys & asset_graph.source_asset_keys
-        if selected_source_asset_keys:
-            raise DagsterInvalidSubsetError(
-                f"AssetKey(s) {selected_source_asset_keys} were selected, but these keys are "
-                "supplied by SourceAsset objects, not AssetsDefinition objects. You don't need "
-                "to include source assets in a selection for downstream assets to be able to "
-                "read them."
-            )
+        invalid_keys = {
+            key
+            for key in specified_keys
+            if key not in asset_graph.all_asset_keys and key not in asset_graph.source_asset_keys
+        }
         if invalid_keys:
             raise DagsterInvalidSubsetError(
                 f"AssetKey(s) {invalid_keys} were selected, but no AssetsDefinition objects supply "

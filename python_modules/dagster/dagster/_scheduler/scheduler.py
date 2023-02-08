@@ -514,7 +514,6 @@ def launch_scheduled_runs_for_schedule_iterator(
         ) as tick_context:
             try:
                 _check_for_debug_crash(schedule_debug_crash_flags, "TICK_HELD")
-
                 yield from _schedule_runs_at_time(
                     workspace_process_context,
                     logger,

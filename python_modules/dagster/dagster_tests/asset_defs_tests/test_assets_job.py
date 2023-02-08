@@ -65,6 +65,7 @@ def check_experimental_warnings():
                 "resource_defs" in w.message.args[0]
                 or "io_manager_def" in w.message.args[0]
                 or "build_assets_job" in w.message.args[0]
+                or "observable_source_asset" in w.message.args[0]
             ):
                 continue
             assert False, f"Unexpected warning: {w.message.args[0]}"
