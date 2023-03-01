@@ -1,5 +1,4 @@
 import collections.abc
-import inspect
 from functools import update_wrapper
 from typing import Callable, Optional, Sequence, Set, Union
 
@@ -155,8 +154,8 @@ def asset_sensor(
         check.callable_param(fn, "fn")
         sensor_name = name or fn.__name__
 
-        def _wrapped_fn(context, event):
-            result = fn(context, event)
+        def _wrapped_fn(*args, **kwargs):
+            result = fn(*args, **kwargs)
 
             if inspect.isgenerator(result) or isinstance(result, list):
                 for item in result:
@@ -172,6 +171,10 @@ def asset_sensor(
                         "RunRequest objects."
                     ).format(sensor_name=sensor_name, result=result, type_=type(result))
                 )
+
+        import inspect
+
+        _wrapped_fn.__signature__ = inspect.signature(fn)
 
         return AssetSensorDefinition(
             name=sensor_name,

@@ -17,6 +17,7 @@ from dagster import (
 from dagster._check import ParameterCheckError
 from dagster._config.structured_config import ConfigurableResource
 from dagster._core.definitions.asset_selection import AssetSelection
+from dagster._core.definitions.decorators.sensor_decorator import asset_sensor
 from dagster._core.definitions.definitions_class import Definitions
 from dagster._core.definitions.events import AssetMaterialization
 from dagster._core.definitions.freshness_policy_sensor_definition import (
@@ -36,6 +37,7 @@ from dagster._core.definitions.run_status_sensor_definition import (
     run_status_sensor,
 )
 from dagster._core.definitions.sensor_definition import RunRequest
+from dagster._core.events.log import EventLogEntry
 from dagster._core.execution.context.compute import OpExecutionContext
 from dagster._core.scheduler.instigation import InstigatorState, InstigatorStatus, TickStatus
 from dagster._core.storage.pipeline_run import DagsterRunStatus
@@ -114,6 +116,34 @@ def sensor_context_arg_not_first_and_weird_name(
     return RunRequest(not_called_context.resources.my_resource.a_str, run_config={}, tags={})
 
 
+@asset_sensor(asset_key=AssetKey("my_asset"), job_name="the_job")
+def sensor_asset(my_resource: MyResource, not_called_context: SensorEvaluationContext):
+    assert not_called_context.resources.my_resource.a_str == my_resource.a_str
+
+    return RunRequest(my_resource.a_str, run_config={}, tags={})
+
+
+@asset_sensor(asset_key=AssetKey("my_asset"), job_name="the_job")
+def sensor_asset_with_event(
+    my_resource: MyResource,
+    not_called_context: SensorEvaluationContext,
+    my_asset_event: EventLogEntry,
+):
+    assert not_called_context.resources.my_resource.a_str == my_resource.a_str
+
+    assert my_asset_event.dagster_event
+    assert my_asset_event.dagster_event.asset_key == AssetKey("my_asset")
+
+    return RunRequest(my_resource.a_str, run_config={}, tags={})
+
+
+@asset_sensor(asset_key=AssetKey("my_asset"), job_name="the_job")
+def sensor_asset_no_context(
+    my_resource: MyResource,
+):
+    return RunRequest(my_resource.a_str, run_config={}, tags={})
+
+
 @multi_asset_sensor(
     monitored_assets=[AssetKey("my_asset")],
     job_name="the_job",
@@ -157,6 +187,9 @@ the_repo = Definitions(
         sensor_from_context_weird_name,
         sensor_from_fn_arg_no_context,
         sensor_context_arg_not_first_and_weird_name,
+        sensor_asset,
+        sensor_asset_with_event,
+        sensor_asset_no_context,
         sensor_multi_asset,
         sensor_freshness_policy,
         sensor_run_status,
@@ -227,6 +260,9 @@ def test_cant_use_required_resource_keys_and_params_both() -> None:
         "sensor_from_context_weird_name",
         "sensor_from_fn_arg_no_context",
         "sensor_context_arg_not_first_and_weird_name",
+        "sensor_asset",
+        "sensor_asset_with_event",
+        "sensor_asset_no_context",
         "sensor_multi_asset",
     ],
 )
@@ -252,7 +288,7 @@ def test_resources(
 
     with pendulum.test(freeze_datetime):
         base_run_count = 0
-        if sensor_name in ("sensor_multi_asset"):
+        if "asset" in sensor_name:
             the_job.execute_in_process(instance=instance)
             base_run_count = 1
 
@@ -274,7 +310,7 @@ def test_resources(
         wait_for_all_runs_to_start(instance)
 
         assert instance.get_runs_count() == base_run_count + 1
-        instance.get_runs()[0]
+        run = instance.get_runs()[0]
         ticks = instance.get_ticks(
             external_sensor.get_external_origin_id(), external_sensor.selector_id
         )
@@ -285,7 +321,7 @@ def test_resources(
             external_sensor,
             freeze_datetime,
             TickStatus.SUCCESS,
-            expected_run_ids=[],
+            expected_run_ids=[run.run_id],
         )
 
 
