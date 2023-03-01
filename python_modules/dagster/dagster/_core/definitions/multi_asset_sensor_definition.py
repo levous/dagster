@@ -22,8 +22,8 @@ from dagster._annotations import experimental, public
 from dagster._core.definitions.asset_selection import AssetSelection
 from dagster._core.definitions.assets import AssetsDefinition
 from dagster._core.definitions.partition import PartitionsDefinition
+from dagster._core.definitions.resource_definition import ResourceDefinition
 from dagster._core.definitions.resource_output import get_resource_args
-from dagster._core.definitions.scoped_resources_builder import Resources
 from dagster._core.errors import (
     DagsterInvalidDefinitionError,
     DagsterInvalidInvocationError,
@@ -216,7 +216,7 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
         repository_def: "RepositoryDefinition",
         monitored_assets: Union[Sequence[AssetKey], AssetSelection],
         instance: Optional[DagsterInstance] = None,
-        resources: Optional[Resources] = None,
+        resource_defs: Optional[Mapping[str, ResourceDefinition]] = None,
     ):
         from dagster._core.storage.event_log.base import EventLogRecord
 
@@ -264,7 +264,7 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
             repository_name=repository_name,
             instance=instance,
             repository_def=repository_def,
-            resources=resources,
+            resource_defs=resource_defs,
         )
 
     def _cache_initial_unconsumed_events(self) -> None:
@@ -938,6 +938,7 @@ def build_multi_asset_sensor_context(
     cursor: Optional[str] = None,
     repository_name: Optional[str] = None,
     cursor_from_latest_materializations: bool = False,
+    resource_defs: Optional[Mapping[str, ResourceDefinition]] = None,
 ) -> MultiAssetSensorEvaluationContext:
     """Builds multi asset sensor execution context for testing purposes using the provided parameters.
 
@@ -956,6 +957,8 @@ def build_multi_asset_sensor_context(
         repository_name (Optional[str]): The name of the repository that the sensor belongs to.
         cursor_from_latest_materializations (bool): If True, the cursor will be set to the latest
             materialization for each monitored asset. By default, set to False.
+        resource_defs (Optional[Mapping[str, ResourceDefinition]]): The resource definitions
+            to provide to the sensor.
 
     Examples:
         .. code-block:: python
@@ -1018,6 +1021,7 @@ def build_multi_asset_sensor_context(
         instance=instance,
         monitored_assets=monitored_assets,
         repository_def=repository_def,
+        resource_defs=resource_defs,
     )
 
 
@@ -1100,21 +1104,22 @@ class MultiAssetSensorDefinition(SensorDefinition):
                     repository_def=context.repository_def,
                     monitored_assets=monitored_assets,
                     instance=context.instance,
-                    resources=context.resources,
+                    resource_defs=context.resource_defs,
                 )
                 resource_args_populated = {
                     resource_name: getattr(context.resources, resource_name)
                     for resource_name in resource_arg_names
                 }
 
-                context_param_name = get_context_param_name(materialization_fn)
-                if context_param_name:
-                    result = materialization_fn(
-                        **{context_param_name: multi_asset_sensor_context},
-                        **resource_args_populated,
-                    )
-                else:
-                    result = materialization_fn(**resource_args_populated)
+                with multi_asset_sensor_context:
+                    context_param_name = get_context_param_name(materialization_fn)
+                    if context_param_name:
+                        result = materialization_fn(
+                            **{context_param_name: multi_asset_sensor_context},
+                            **resource_args_populated,
+                        )
+                    else:
+                        result = materialization_fn(**resource_args_populated)
 
                 if result is None:
                     return

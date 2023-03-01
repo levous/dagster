@@ -148,6 +148,7 @@ class SensorEvaluationContext:
             my_sensor(context)
         """
 
+        self._resource_defs = resources
         self._resources_cm = build_resources(resources or {})
 
         self._resources = self._resources_cm.__enter__()
@@ -177,6 +178,10 @@ class SensorEvaluationContext:
     def __del__(self) -> None:
         if self._resources_contain_cm and not self._cm_scope_entered:
             self._resources_cm.__exit__(None, None, None)  # pylint: disable=no-member
+
+    @property
+    def resource_defs(self) -> Optional[Mapping[str, "ResourceDefinition"]]:
+        return self._resource_defs
 
     @property
     def resources(self) -> Resources:

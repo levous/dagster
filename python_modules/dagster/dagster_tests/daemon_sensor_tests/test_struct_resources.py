@@ -124,6 +124,16 @@ def sensor_asset(my_resource: MyResource, not_called_context: SensorEvaluationCo
 
 
 @asset_sensor(asset_key=AssetKey("my_asset"), job_name="the_job")
+def sensor_asset_with_cm(
+    my_cm_resource: Resource[str], not_called_context: SensorEvaluationContext
+):
+    assert not_called_context.resources.my_cm_resource == my_cm_resource
+    assert is_in_cm
+
+    return RunRequest(my_cm_resource, run_config={}, tags={})
+
+
+@asset_sensor(asset_key=AssetKey("my_asset"), job_name="the_job")
 def sensor_asset_with_event(
     my_resource: MyResource,
     not_called_context: SensorEvaluationContext,
@@ -162,6 +172,25 @@ def sensor_multi_asset(
     return RunRequest(my_resource.a_str, run_config={}, tags={})
 
 
+@multi_asset_sensor(
+    monitored_assets=[AssetKey("my_asset")],
+    job_name="the_job",
+)
+def sensor_multi_asset_with_cm(
+    my_cm_resource: Resource[str],
+    not_called_context: MultiAssetSensorEvaluationContext,
+) -> RunRequest:
+    assert not_called_context.resources.my_cm_resource == my_cm_resource
+    assert is_in_cm
+
+    asset_events = list(
+        not_called_context.materialization_records_for_key(asset_key=AssetKey("my_asset"), limit=1)
+    )
+    if asset_events:
+        not_called_context.advance_all_cursors()
+    return RunRequest(my_cm_resource, run_config={}, tags={})
+
+
 @freshness_policy_sensor(asset_selection=AssetSelection.all())
 def sensor_freshness_policy(
     my_resource: MyResource, not_called_context: FreshnessPolicySensorContext
@@ -170,12 +199,32 @@ def sensor_freshness_policy(
     return RunRequest(my_resource.a_str, run_config={}, tags={})
 
 
+@freshness_policy_sensor(asset_selection=AssetSelection.all())
+def sensor_freshness_policy_with_cm(
+    my_cm_resource: Resource[str], not_called_context: FreshnessPolicySensorContext
+):
+    assert is_in_cm
+    assert not_called_context.resources.my_cm_resource == my_cm_resource
+    return RunRequest(my_cm_resource, run_config={}, tags={})
+
+
 @run_status_sensor(
     monitor_all_repositories=True, run_status=DagsterRunStatus.SUCCESS, request_job=the_job
 )
 def sensor_run_status(my_resource: MyResource, not_called_context: RunStatusSensorContext):
     assert not_called_context.resources.my_resource.a_str == my_resource.a_str
     return RunRequest(my_resource.a_str, run_config={}, tags={})
+
+
+@run_status_sensor(
+    monitor_all_repositories=True, run_status=DagsterRunStatus.SUCCESS, request_job=the_job
+)
+def sensor_run_status_with_cm(
+    my_cm_resource: Resource[str], not_called_context: RunStatusSensorContext
+):
+    assert not_called_context.resources.my_cm_resource == my_cm_resource
+    assert is_in_cm
+    return RunRequest(my_cm_resource, run_config={}, tags={})
 
 
 the_repo = Definitions(
@@ -188,11 +237,15 @@ the_repo = Definitions(
         sensor_from_fn_arg_no_context,
         sensor_context_arg_not_first_and_weird_name,
         sensor_asset,
+        sensor_asset_with_cm,
         sensor_asset_with_event,
         sensor_asset_no_context,
         sensor_multi_asset,
+        sensor_multi_asset_with_cm,
         sensor_freshness_policy,
+        sensor_freshness_policy_with_cm,
         sensor_run_status,
+        sensor_run_status_with_cm,
     ],
     resources={
         "my_resource": MyResource(a_str="foo"),
@@ -261,9 +314,11 @@ def test_cant_use_required_resource_keys_and_params_both() -> None:
         "sensor_from_fn_arg_no_context",
         "sensor_context_arg_not_first_and_weird_name",
         "sensor_asset",
+        "sensor_asset_with_cm",
         "sensor_asset_with_event",
         "sensor_asset_no_context",
         "sensor_multi_asset",
+        "sensor_multi_asset_with_cm",
     ],
 )
 def test_resources(
@@ -273,6 +328,7 @@ def test_resources(
     external_repo_struct_resources,
     sensor_name,
 ) -> None:
+    assert not is_in_cm
     freeze_datetime = to_timezone(
         create_pendulum_time(
             year=2019,
@@ -323,14 +379,24 @@ def test_resources(
             TickStatus.SUCCESS,
             expected_run_ids=[run.run_id],
         )
+    assert not is_in_cm
 
 
+@pytest.mark.parametrize(
+    "sensor_name",
+    [
+        "sensor_freshness_policy",
+        "sensor_freshness_policy_with_cm",
+    ],
+)
 def test_resources_freshness_policy_sensor(
     caplog,
     instance,
     workspace_context_struct_resources,
     external_repo_struct_resources,
+    sensor_name,
 ) -> None:
+    assert not is_in_cm
     freeze_datetime = to_timezone(
         create_pendulum_time(
             year=2019,
@@ -346,9 +412,7 @@ def test_resources_freshness_policy_sensor(
     original_time = freeze_datetime
 
     with pendulum.test(freeze_datetime):
-        external_sensor = external_repo_struct_resources.get_external_sensor(
-            "sensor_freshness_policy"
-        )
+        external_sensor = external_repo_struct_resources.get_external_sensor(sensor_name)
         instance.add_instigator_state(
             InstigatorState(
                 external_sensor.get_external_origin(),
@@ -390,14 +454,25 @@ def test_resources_freshness_policy_sensor(
             TickStatus.SKIPPED,
             expected_run_ids=[],
         )
+    assert not is_in_cm
 
 
+@pytest.mark.parametrize(
+    "sensor_name",
+    [
+        "sensor_run_status",
+        "sensor_run_status_with_cm",
+    ],
+)
 def test_resources_run_status_sensor(
     caplog,
     instance,
     workspace_context_struct_resources,
     external_repo_struct_resources,
+    sensor_name,
 ) -> None:
+    assert not is_in_cm
+
     freeze_datetime = to_timezone(
         create_pendulum_time(
             year=2019,
@@ -413,7 +488,7 @@ def test_resources_run_status_sensor(
     original_time = freeze_datetime
 
     with pendulum.test(freeze_datetime):
-        external_sensor = external_repo_struct_resources.get_external_sensor("sensor_run_status")
+        external_sensor = external_repo_struct_resources.get_external_sensor(sensor_name)
         instance.add_instigator_state(
             InstigatorState(
                 external_sensor.get_external_origin(),
@@ -461,3 +536,4 @@ def test_resources_run_status_sensor(
             TickStatus.SKIPPED,
             expected_run_ids=[],
         )
+    assert not is_in_cm
