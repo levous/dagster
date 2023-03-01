@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Dict, Mapping, NamedTuple, Optional, Set, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, NamedTuple, Optional, Set, cast
 
 import pendulum
 
@@ -25,7 +25,6 @@ from dagster._serdes.errors import DeserializationError
 from dagster._serdes.serdes import deserialize_value
 from dagster._seven import JSONDecodeError
 
-from ..decorator_utils import get_function_params
 from .sensor_definition import (
     DefaultSensorStatus,
     SensorDefinition,
@@ -144,6 +143,7 @@ def build_freshness_policy_sensor_context(
     minutes_late: Optional[float],
     previous_minutes_late: Optional[float] = None,
     instance: Optional[DagsterInstance] = None,
+    resources: Optional[Resources] = None,
 ) -> FreshnessPolicySensorContext:
     """
     Builds freshness policy sensor context from provided parameters.
@@ -178,6 +178,7 @@ def build_freshness_policy_sensor_context(
         minutes_late=minutes_late,
         previous_minutes_late=previous_minutes_late,
         instance=instance or DagsterInstance.ephemeral(),
+        resources=resources,
     )
 
 
@@ -318,19 +319,20 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
 
     def __call__(self, *args, **kwargs) -> None:
         context_param_name = get_context_param_name(self._freshness_policy_sensor_fn)
+        if len(args) + len(kwargs) > 1:
+            raise DagsterInvalidInvocationError(
+                "Freshness policy sensor invocation received multiple arguments. Only a first "
+                "positional context parameter should be provided when invoking."
+            )
+
+        context_param: Mapping[str, Any] = {}
+
         if context_param_name:
             if len(args) + len(kwargs) == 0:
                 raise DagsterInvalidInvocationError(
                     "Freshness policy sensor function expected context argument, but no context"
                     " argument was provided when invoking."
                 )
-            if len(args) + len(kwargs) > 1:
-                raise DagsterInvalidInvocationError(
-                    "Freshness policy sensor invocation received multiple arguments. Only a first "
-                    "positional context parameter should be provided when invoking."
-                )
-
-            context_param_name = get_function_params(self._freshness_policy_sensor_fn)[0].name
 
             if args:
                 context = check.opt_inst_param(
@@ -347,18 +349,29 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
                     context_param_name,
                     FreshnessPolicySensorContext,
                 )
-
-            if not context:
-                raise DagsterInvalidInvocationError(
-                    "Context must be provided for direct invocation of freshness policy sensor."
-                )
-
-            return self._freshness_policy_sensor_fn(context)
+            context_param = {context_param_name: context}
 
         else:
-            raise DagsterInvalidDefinitionError(
-                "Freshness policy sensor must accept a context argument."
-            )
+            # We still optionally take a context arg even if the underlying function doesn't require it
+            # this is so that we can pass resources if the sensor needs any
+            context: Optional[SensorEvaluationContext] = None
+            if args:
+                context = check.opt_inst_param(args[0], "context", SensorEvaluationContext)
+            elif kwargs:
+                context = check.opt_inst_param(
+                    list(kwargs.values())[0], "context", SensorEvaluationContext
+                )
+
+        context_resources = context.resources if context else ScopedResourcesBuilder().build(None)
+        check.invariant(
+            all((hasattr(context_resources, k) for k in self._required_resource_keys)),
+            "Sensor missing required resources: {}".format(
+                ", ".join(self._required_resource_keys - set(context_resources.__dict__.keys()))
+            ),
+        )
+        resources = {k: getattr(context_resources, k) for k in self._required_resource_keys}
+
+        return self._freshness_policy_sensor_fn(**context_param, **resources)
 
     @property
     def sensor_type(self) -> SensorType:

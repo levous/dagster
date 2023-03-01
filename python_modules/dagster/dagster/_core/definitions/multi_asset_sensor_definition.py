@@ -24,6 +24,7 @@ from dagster._core.definitions.assets import AssetsDefinition
 from dagster._core.definitions.partition import PartitionsDefinition
 from dagster._core.definitions.resource_definition import ResourceDefinition
 from dagster._core.definitions.resource_output import get_resource_args
+from dagster._core.definitions.scoped_resources_builder import ScopedResourcesBuilder
 from dagster._core.errors import (
     DagsterInvalidDefinitionError,
     DagsterInvalidInvocationError,
@@ -32,7 +33,6 @@ from dagster._core.errors import (
 from dagster._core.instance import DagsterInstance
 from dagster._core.instance.ref import InstanceRef
 
-from ..decorator_utils import get_function_params
 from .events import AssetKey
 from .run_request import RunRequest, SkipReason
 from .sensor_definition import (
@@ -1174,7 +1174,13 @@ class MultiAssetSensorDefinition(SensorDefinition):
         )
 
     def __call__(self, *args, **kwargs) -> AssetMaterializationFunctionReturn:
-        context = None
+        if len(args) + len(kwargs) > 1:
+            raise DagsterInvalidInvocationError(
+                "Sensor invocation received multiple arguments. Only a first "
+                "positional context parameter should be provided when invoking."
+            )
+
+        context: Optional[MultiAssetSensorEvaluationContext] = None
 
         context_param_name = get_context_param_name(self._raw_asset_materialization_fn)
         if context_param_name:
@@ -1183,13 +1189,6 @@ class MultiAssetSensorDefinition(SensorDefinition):
                     "Sensor evaluation function expected context argument, but no context argument "
                     "was provided when invoking."
                 )
-            if len(args) + len(kwargs) > 1:
-                raise DagsterInvalidInvocationError(
-                    "Sensor invocation received multiple arguments. Only a first "
-                    "positional context parameter should be provided when invoking."
-                )
-
-            context_param_name = get_function_params(self._raw_asset_materialization_fn)[0].name
 
             if args:
                 context = check.inst_param(
@@ -1206,16 +1205,29 @@ class MultiAssetSensorDefinition(SensorDefinition):
                     MultiAssetSensorEvaluationContext,
                 )
 
-            result = self._raw_asset_materialization_fn(context)
-
         else:
-            if len(args) + len(kwargs) > 0:
-                raise DagsterInvalidInvocationError(
-                    "Sensor decorated function has no arguments, but arguments were provided to "
-                    "invocation."
+            # We still optionally take a context arg even if the underlying function doesn't require it
+            # this is so that we can pass resources if the sensor needs any
+            if args:
+                context = check.opt_inst_param(
+                    args[0], "context", MultiAssetSensorEvaluationContext
+                )
+            elif kwargs:
+                context = check.opt_inst_param(
+                    list(kwargs.values())[0], "context", MultiAssetSensorEvaluationContext
                 )
 
-            result = self._raw_asset_materialization_fn()
+        context_resources = context.resources if context else ScopedResourcesBuilder().build(None)
+        check.invariant(
+            all((hasattr(context_resources, k) for k in self._required_resource_keys)),
+            "Sensor missing required resources: {}".format(
+                ", ".join(self._required_resource_keys - set(context_resources.__dict__.keys()))
+            ),
+        )
+        resources = {k: getattr(context_resources, k) for k in self._required_resource_keys}
+
+        context_param = {context_param_name: context} if context_param_name and context else {}
+        result = self._raw_asset_materialization_fn(**context_param, **resources)
 
         if context:
             context.update_cursor_after_evaluation()

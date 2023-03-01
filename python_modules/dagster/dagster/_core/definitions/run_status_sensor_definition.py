@@ -3,8 +3,10 @@ import warnings
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Iterator,
+    Mapping,
     NamedTuple,
     Optional,
     Sequence,
@@ -715,17 +717,21 @@ class RunStatusSensorDefinition(SensorDefinition):
         )
 
     def __call__(self, *args, **kwargs) -> RawSensorEvaluationFunctionReturn:
+        if len(args) + len(kwargs) > 1:
+            raise DagsterInvalidInvocationError(
+                "Run status sensor invocation received multiple arguments. Only a first "
+                "positional context parameter should be provided when invoking."
+            )
+
+        context: Optional[RunStatusSensorContext] = None
+        context_param: Mapping[str, Any] = {}
+
         context_param_name = get_context_param_name(self._run_status_sensor_fn)
         if context_param_name:
             if len(args) + len(kwargs) == 0:
                 raise DagsterInvalidInvocationError(
                     "Run status sensor function expected context argument, but no context argument "
                     "was provided when invoking."
-                )
-            if len(args) + len(kwargs) > 1:
-                raise DagsterInvalidInvocationError(
-                    "Run status sensor invocation received multiple arguments. Only a first "
-                    "positional context parameter should be provided when invoking."
                 )
 
             context_param_name = get_function_params(self._run_status_sensor_fn)[0].name
@@ -745,17 +751,28 @@ class RunStatusSensorDefinition(SensorDefinition):
                 raise DagsterInvalidInvocationError(
                     "Context must be provided for direct invocation of run status sensor."
                 )
-
-            return self._run_status_sensor_fn(context)
+            context_param = {context_param_name: context}
 
         else:
-            if len(args) + len(kwargs) > 0:
-                raise DagsterInvalidInvocationError(
-                    "Run status sensor decorated function has no arguments, but arguments were "
-                    "provided to invocation."
+            # We still optionally take a context arg even if the underlying function doesn't require it
+            # this is so that we can pass resources if the sensor needs any
+            if args:
+                context = check.opt_inst_param(args[0], "context", RunStatusSensorContext)
+            elif kwargs:
+                context = check.opt_inst_param(
+                    list(kwargs.values())[0], "context", RunStatusSensorContext
                 )
 
-            return self._run_status_sensor_fn()
+        context_resources = context.resources if context else ScopedResourcesBuilder().build(None)
+        check.invariant(
+            all((hasattr(context_resources, k) for k in self._required_resource_keys)),
+            "Sensor missing required resources: {}".format(
+                ", ".join(self._required_resource_keys - set(context_resources.__dict__.keys()))
+            ),
+        )
+        resources = {k: getattr(context_resources, k) for k in self._required_resource_keys}
+
+        return self._run_status_sensor_fn(**context_param, **resources)
 
     @property
     def sensor_type(self) -> SensorType:
