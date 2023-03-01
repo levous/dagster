@@ -18,7 +18,6 @@ from typing_extensions import TypeAlias
 
 import dagster._check as check
 from dagster._annotations import public
-from dagster._core.decorator_utils import has_at_least_one_parameter
 from dagster._core.definitions.instigation_logger import InstigationLogger
 from dagster._core.errors import (
     DagsterInvalidDefinitionError,
@@ -52,6 +51,7 @@ from .sensor_definition import (
     SensorEvaluationContext,
     SensorType,
     SkipReason,
+    get_context_param_name,
 )
 from .target import ExecutableDefinition
 from .unresolved_asset_job_definition import UnresolvedAssetJobDefinition
@@ -64,12 +64,12 @@ if TYPE_CHECKING:
     )
 
 RunStatusSensorEvaluationFunction: TypeAlias = Union[
-    Callable[[], RawSensorEvaluationFunctionReturn],
-    Callable[["RunStatusSensorContext"], RawSensorEvaluationFunctionReturn],
+    Callable[..., RawSensorEvaluationFunctionReturn],
+    Callable[..., RawSensorEvaluationFunctionReturn],
 ]
 RunFailureSensorEvaluationFn: TypeAlias = Union[
-    Callable[[], RawSensorEvaluationFunctionReturn],
-    Callable[["RunFailureSensorContext"], RawSensorEvaluationFunctionReturn],
+    Callable[..., RawSensorEvaluationFunctionReturn],
+    Callable[..., RawSensorEvaluationFunctionReturn],
 ]
 
 
@@ -677,8 +677,9 @@ class RunStatusSensorDefinition(SensorDefinition):
             jobs=request_jobs,
         )
 
-    def __call__(self, *args, **kwargs):
-        if has_at_least_one_parameter(self._run_status_sensor_fn):
+    def __call__(self, *args, **kwargs) -> RawSensorEvaluationFunctionReturn:
+        context_param_name = get_context_param_name(self._run_status_sensor_fn)
+        if context_param_name:
             if len(args) + len(kwargs) == 0:
                 raise DagsterInvalidInvocationError(
                     "Run status sensor function expected context argument, but no context argument "

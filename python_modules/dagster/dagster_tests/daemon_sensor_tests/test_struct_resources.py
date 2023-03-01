@@ -6,8 +6,10 @@ from typing import Iterator, Optional
 import pendulum
 import pytest
 from dagster import (
+    AssetKey,
     SensorEvaluationContext,
     job,
+    multi_asset_sensor,
     op,
     resource,
     sensor,
@@ -15,12 +17,17 @@ from dagster import (
 from dagster._check import ParameterCheckError
 from dagster._config.structured_config import ConfigurableResource
 from dagster._core.definitions.definitions_class import Definitions
+from dagster._core.definitions.events import AssetMaterialization
+from dagster._core.definitions.multi_asset_sensor_definition import (
+    MultiAssetSensorEvaluationContext,
+)
 from dagster._core.definitions.repository_definition.valid_definitions import (
     SINGLETON_REPOSITORY_NAME,
 )
 from dagster._core.definitions.resource_annotation import Resource
 from dagster._core.definitions.run_request import InstigatorType
 from dagster._core.definitions.sensor_definition import RunRequest
+from dagster._core.execution.context.compute import OpExecutionContext
 from dagster._core.scheduler.instigation import InstigatorState, InstigatorStatus, TickStatus
 from dagster._core.test_utils import (
     create_test_daemon_workspace_context,
@@ -33,13 +40,16 @@ from dagster._seven.compat.pendulum import create_pendulum_time, to_timezone
 from .test_sensor_run import evaluate_sensors, validate_tick, wait_for_all_runs_to_start
 
 
-@op
-def the_op(_):
-    return 1
+@op(out={})
+def the_op(context: OpExecutionContext):
+    yield AssetMaterialization(
+        asset_key=AssetKey("my_asset"),
+        description="my_asset",
+    )
 
 
 @job
-def the_job():
+def the_job() -> None:
     the_op()
 
 
@@ -94,6 +104,24 @@ def sensor_context_arg_not_first_and_weird_name(
     return RunRequest(not_called_context.resources.my_resource.a_str, run_config={}, tags={})
 
 
+@multi_asset_sensor(
+    monitored_assets=[AssetKey("my_asset")],
+    job_name="the_job",
+)
+def sensor_multi_asset(
+    my_resource: MyResource,
+    not_called_context: MultiAssetSensorEvaluationContext,
+) -> RunRequest:
+    assert not_called_context.resources.my_resource.a_str == my_resource.a_str
+
+    asset_events = list(
+        not_called_context.materialization_records_for_key(asset_key=AssetKey("my_asset"), limit=1)
+    )
+    if asset_events:
+        not_called_context.advance_all_cursors()
+    return RunRequest(my_resource.a_str, run_config={}, tags={})
+
+
 the_repo = Definitions(
     jobs=[the_job],
     sensors=[
@@ -103,6 +131,7 @@ the_repo = Definitions(
         sensor_from_context_weird_name,
         sensor_from_fn_arg_no_context,
         sensor_context_arg_not_first_and_weird_name,
+        sensor_multi_asset,
     ],
     resources={
         "my_resource": MyResource(a_str="foo"),
@@ -170,6 +199,7 @@ def test_cant_use_required_resource_keys_and_params_both() -> None:
         "sensor_from_context_weird_name",
         "sensor_from_fn_arg_no_context",
         "sensor_context_arg_not_first_and_weird_name",
+        "sensor_multi_asset",
     ],
 )
 def test_resources(
@@ -178,7 +208,7 @@ def test_resources(
     workspace_context_struct_resources,
     external_repo_struct_resources,
     sensor_name,
-):
+) -> None:
     freeze_datetime = to_timezone(
         create_pendulum_time(
             year=2019,
@@ -193,6 +223,11 @@ def test_resources(
     )
 
     with pendulum.test(freeze_datetime):
+        base_run_count = 0
+        if sensor_name == "sensor_multi_asset":
+            the_job.execute_in_process(instance=instance)
+            base_run_count = 1
+
         external_sensor = external_repo_struct_resources.get_external_sensor(sensor_name)
         instance.add_instigator_state(
             InstigatorState(
@@ -201,7 +236,7 @@ def test_resources(
                 InstigatorStatus.RUNNING,
             )
         )
-        assert instance.get_runs_count() == 0
+        assert instance.get_runs_count() == base_run_count
         ticks = instance.get_ticks(
             external_sensor.get_external_origin_id(), external_sensor.selector_id
         )
@@ -210,7 +245,7 @@ def test_resources(
         evaluate_sensors(workspace_context_struct_resources, None)
         wait_for_all_runs_to_start(instance)
 
-        assert instance.get_runs_count() == 1
+        assert instance.get_runs_count() == base_run_count + 1
         run = instance.get_runs()[0]
         ticks = instance.get_ticks(
             external_sensor.get_external_origin_id(), external_sensor.selector_id

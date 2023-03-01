@@ -19,10 +19,11 @@ from typing import (
 
 import dagster._check as check
 from dagster._annotations import experimental, public
-from dagster._core.decorator_utils import has_at_least_one_parameter
 from dagster._core.definitions.asset_selection import AssetSelection
 from dagster._core.definitions.assets import AssetsDefinition
 from dagster._core.definitions.partition import PartitionsDefinition
+from dagster._core.definitions.resource_output import get_resource_args
+from dagster._core.definitions.scoped_resources_builder import Resources
 from dagster._core.errors import (
     DagsterInvalidDefinitionError,
     DagsterInvalidInvocationError,
@@ -39,13 +40,13 @@ from .sensor_definition import (
     SensorDefinition,
     SensorEvaluationContext,
     SensorType,
+    get_context_param_name,
 )
 from .target import ExecutableDefinition
 from .utils import check_valid_name
 
 if TYPE_CHECKING:
     from dagster._core.definitions.repository_definition import RepositoryDefinition
-    from dagster._core.events.log import EventLogEntry
     from dagster._core.storage.event_log.base import EventLogRecord
 
 MAX_NUM_UNCONSUMED_EVENTS = 25
@@ -215,6 +216,7 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
         repository_def: "RepositoryDefinition",
         monitored_assets: Union[Sequence[AssetKey], AssetSelection],
         instance: Optional[DagsterInstance] = None,
+        resources: Optional[Resources] = None,
     ):
         from dagster._core.storage.event_log.base import EventLogRecord
 
@@ -262,6 +264,7 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
             repository_name=repository_name,
             instance=instance,
             repository_def=repository_def,
+            resources=resources,
         )
 
     def _cache_initial_unconsumed_events(self) -> None:
@@ -1022,12 +1025,12 @@ AssetMaterializationFunctionReturn = Union[
     Iterator[Union[RunRequest, SkipReason]], Sequence[RunRequest], RunRequest, SkipReason, None
 ]
 AssetMaterializationFunction = Callable[
-    ["SensorEvaluationContext", "EventLogEntry"],
+    ...,
     AssetMaterializationFunctionReturn,
 ]
 
 MultiAssetMaterializationFunction = Callable[
-    ["MultiAssetSensorEvaluationContext"],
+    ...,
     AssetMaterializationFunctionReturn,
 ]
 
@@ -1075,7 +1078,17 @@ class MultiAssetSensorDefinition(SensorDefinition):
         jobs: Optional[Sequence[ExecutableDefinition]] = None,
         default_status: DefaultSensorStatus = DefaultSensorStatus.STOPPED,
         request_assets: Optional[AssetSelection] = None,
+        required_resource_keys: Optional[Set[str]] = None,
     ):
+        resource_arg_names: Set[str] = {
+            arg.name for arg in get_resource_args(asset_materialization_fn)
+        }
+
+        combined_required_resource_keys = (
+            check.opt_set_param(required_resource_keys, "required_resource_keys", of_type=str)
+            | resource_arg_names
+        )
+
         def _wrap_asset_fn(materialization_fn):
             def _fn(context):
                 multi_asset_sensor_context = MultiAssetSensorEvaluationContext(
@@ -1087,9 +1100,22 @@ class MultiAssetSensorDefinition(SensorDefinition):
                     repository_def=context.repository_def,
                     monitored_assets=monitored_assets,
                     instance=context.instance,
+                    resources=context.resources,
                 )
+                resource_args_populated = {
+                    resource_name: getattr(context.resources, resource_name)
+                    for resource_name in resource_arg_names
+                }
 
-                result = materialization_fn(multi_asset_sensor_context)
+                context_param_name = get_context_param_name(materialization_fn)
+                if context_param_name:
+                    result = materialization_fn(
+                        **{context_param_name: multi_asset_sensor_context},
+                        **resource_args_populated,
+                    )
+                else:
+                    result = materialization_fn(**resource_args_populated)
+
                 if result is None:
                     return
 
@@ -1139,10 +1165,14 @@ class MultiAssetSensorDefinition(SensorDefinition):
             jobs=jobs,
             default_status=default_status,
             asset_selection=request_assets,
+            required_resource_keys=combined_required_resource_keys,
         )
 
-    def __call__(self, *args, **kwargs):
-        if has_at_least_one_parameter(self._raw_asset_materialization_fn):
+    def __call__(self, *args, **kwargs) -> AssetMaterializationFunctionReturn:
+        context = None
+
+        context_param_name = get_context_param_name(self._raw_asset_materialization_fn)
+        if context_param_name:
             if len(args) + len(kwargs) == 0:
                 raise DagsterInvalidInvocationError(
                     "Sensor evaluation function expected context argument, but no context argument "
@@ -1182,7 +1212,8 @@ class MultiAssetSensorDefinition(SensorDefinition):
 
             result = self._raw_asset_materialization_fn()
 
-        context.update_cursor_after_evaluation()
+        if context:
+            context.update_cursor_after_evaluation()
         return result
 
     @property

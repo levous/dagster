@@ -4,7 +4,6 @@ import pendulum
 
 import dagster._check as check
 from dagster._annotations import PublicAttr, experimental
-from dagster._core.decorator_utils import has_at_least_one_parameter
 from dagster._core.definitions.asset_selection import AssetSelection
 from dagster._core.definitions.data_time import CachingDataTimeResolver
 from dagster._core.definitions.events import AssetKey
@@ -31,6 +30,7 @@ from .sensor_definition import (
     SensorEvaluationContext,
     SensorType,
     SkipReason,
+    get_context_param_name,
 )
 
 if TYPE_CHECKING:
@@ -288,8 +288,9 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
             default_status=default_status,
         )
 
-    def __call__(self, *args, **kwargs):
-        if has_at_least_one_parameter(self._freshness_policy_sensor_fn):
+    def __call__(self, *args, **kwargs) -> None:
+        context_param_name = get_context_param_name(self._freshness_policy_sensor_fn)
+        if context_param_name:
             if len(args) + len(kwargs) == 0:
                 raise DagsterInvalidInvocationError(
                     "Freshness policy sensor function expected context argument, but no context"
