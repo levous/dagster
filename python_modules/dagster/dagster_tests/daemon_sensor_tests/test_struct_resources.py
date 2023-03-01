@@ -16,8 +16,13 @@ from dagster import (
 )
 from dagster._check import ParameterCheckError
 from dagster._config.structured_config import ConfigurableResource
+from dagster._core.definitions.asset_selection import AssetSelection
 from dagster._core.definitions.definitions_class import Definitions
 from dagster._core.definitions.events import AssetMaterialization
+from dagster._core.definitions.freshness_policy_sensor_definition import (
+    FreshnessPolicySensorContext,
+    freshness_policy_sensor,
+)
 from dagster._core.definitions.multi_asset_sensor_definition import (
     MultiAssetSensorEvaluationContext,
 )
@@ -26,9 +31,14 @@ from dagster._core.definitions.repository_definition.valid_definitions import (
 )
 from dagster._core.definitions.resource_annotation import Resource
 from dagster._core.definitions.run_request import InstigatorType
+from dagster._core.definitions.run_status_sensor_definition import (
+    RunStatusSensorContext,
+    run_status_sensor,
+)
 from dagster._core.definitions.sensor_definition import RunRequest
 from dagster._core.execution.context.compute import OpExecutionContext
 from dagster._core.scheduler.instigation import InstigatorState, InstigatorStatus, TickStatus
+from dagster._core.storage.pipeline_run import DagsterRunStatus
 from dagster._core.test_utils import (
     create_test_daemon_workspace_context,
 )
@@ -122,6 +132,22 @@ def sensor_multi_asset(
     return RunRequest(my_resource.a_str, run_config={}, tags={})
 
 
+@freshness_policy_sensor(asset_selection=AssetSelection.all())
+def sensor_freshness_policy(
+    my_resource: MyResource, not_called_context: FreshnessPolicySensorContext
+):
+    assert not_called_context.resources.my_resource.a_str == my_resource.a_str
+    return RunRequest(my_resource.a_str, run_config={}, tags={})
+
+
+@run_status_sensor(
+    monitor_all_repositories=True, run_status=DagsterRunStatus.SUCCESS, request_job=the_job
+)
+def sensor_run_status(my_resource: MyResource, not_called_context: RunStatusSensorContext):
+    assert not_called_context.resources.my_resource.a_str == my_resource.a_str
+    return RunRequest(my_resource.a_str, run_config={}, tags={})
+
+
 the_repo = Definitions(
     jobs=[the_job],
     sensors=[
@@ -132,6 +158,8 @@ the_repo = Definitions(
         sensor_from_fn_arg_no_context,
         sensor_context_arg_not_first_and_weird_name,
         sensor_multi_asset,
+        sensor_freshness_policy,
+        sensor_run_status,
     ],
     resources={
         "my_resource": MyResource(a_str="foo"),
@@ -224,7 +252,7 @@ def test_resources(
 
     with pendulum.test(freeze_datetime):
         base_run_count = 0
-        if sensor_name == "sensor_multi_asset":
+        if sensor_name in ("sensor_multi_asset"):
             the_job.execute_in_process(instance=instance)
             base_run_count = 1
 
@@ -246,7 +274,7 @@ def test_resources(
         wait_for_all_runs_to_start(instance)
 
         assert instance.get_runs_count() == base_run_count + 1
-        run = instance.get_runs()[0]
+        instance.get_runs()[0]
         ticks = instance.get_ticks(
             external_sensor.get_external_origin_id(), external_sensor.selector_id
         )
@@ -257,5 +285,143 @@ def test_resources(
             external_sensor,
             freeze_datetime,
             TickStatus.SUCCESS,
+            expected_run_ids=[],
+        )
+
+
+def test_resources_freshness_policy_sensor(
+    caplog,
+    instance,
+    workspace_context_struct_resources,
+    external_repo_struct_resources,
+) -> None:
+    freeze_datetime = to_timezone(
+        create_pendulum_time(
+            year=2019,
+            month=2,
+            day=27,
+            hour=23,
+            minute=59,
+            second=59,
+            tz="UTC",
+        ),
+        "US/Central",
+    )
+    original_time = freeze_datetime
+
+    with pendulum.test(freeze_datetime):
+        external_sensor = external_repo_struct_resources.get_external_sensor(
+            "sensor_freshness_policy"
+        )
+        instance.add_instigator_state(
+            InstigatorState(
+                external_sensor.get_external_origin(),
+                InstigatorType.SENSOR,
+                InstigatorStatus.RUNNING,
+            )
+        )
+        ticks = instance.get_ticks(
+            external_sensor.get_external_origin_id(), external_sensor.selector_id
+        )
+        assert len(ticks) == 0
+
+    # We have to do two ticks because the first tick will be skipped due to the freshness policy
+    # sensor initializing its cursor
+    with pendulum.test(freeze_datetime):
+        evaluate_sensors(workspace_context_struct_resources, None)
+        wait_for_all_runs_to_start(instance)
+    freeze_datetime = freeze_datetime.add(seconds=60)
+    with pendulum.test(freeze_datetime):
+        evaluate_sensors(workspace_context_struct_resources, None)
+        wait_for_all_runs_to_start(instance)
+
+    with pendulum.test(freeze_datetime):
+        ticks = instance.get_ticks(
+            external_sensor.get_external_origin_id(), external_sensor.selector_id
+        )
+        assert len(ticks) == 2
+        validate_tick(
+            ticks[0],
+            external_sensor,
+            freeze_datetime,
+            TickStatus.SKIPPED,
+            expected_run_ids=[],
+        )
+        validate_tick(
+            ticks[1],
+            external_sensor,
+            original_time,
+            TickStatus.SKIPPED,
+            expected_run_ids=[],
+        )
+
+
+def test_resources_run_status_sensor(
+    caplog,
+    instance,
+    workspace_context_struct_resources,
+    external_repo_struct_resources,
+) -> None:
+    freeze_datetime = to_timezone(
+        create_pendulum_time(
+            year=2019,
+            month=2,
+            day=27,
+            hour=23,
+            minute=59,
+            second=59,
+            tz="UTC",
+        ),
+        "US/Central",
+    )
+    original_time = freeze_datetime
+
+    with pendulum.test(freeze_datetime):
+        external_sensor = external_repo_struct_resources.get_external_sensor("sensor_run_status")
+        instance.add_instigator_state(
+            InstigatorState(
+                external_sensor.get_external_origin(),
+                InstigatorType.SENSOR,
+                InstigatorStatus.RUNNING,
+            )
+        )
+        ticks = instance.get_ticks(
+            external_sensor.get_external_origin_id(), external_sensor.selector_id
+        )
+        assert len(ticks) == 0
+
+    # We have to do two ticks because the first tick will be skipped due to the run status
+    # sensor initializing its cursor
+    with pendulum.test(freeze_datetime):
+        evaluate_sensors(workspace_context_struct_resources, None)
+        wait_for_all_runs_to_start(instance)
+    the_job.execute_in_process(instance=instance)
+    freeze_datetime = freeze_datetime.add(seconds=60)
+    with pendulum.test(freeze_datetime):
+        evaluate_sensors(workspace_context_struct_resources, None)
+        wait_for_all_runs_to_start(instance)
+
+    with pendulum.test(freeze_datetime):
+        ticks = instance.get_ticks(
+            external_sensor.get_external_origin_id(), external_sensor.selector_id
+        )
+        assert len(ticks) == 2
+
+        assert instance.get_runs_count() == 2
+        run = instance.get_runs()[0]
+        assert ticks[0].run_keys == ["foo"]
+        validate_tick(
+            ticks[0],
+            external_sensor,
+            freeze_datetime,
+            TickStatus.SUCCESS,
             expected_run_ids=[run.run_id],
+        )
+
+        validate_tick(
+            ticks[1],
+            external_sensor,
+            original_time,
+            TickStatus.SKIPPED,
+            expected_run_ids=[],
         )
