@@ -3,10 +3,6 @@ from typing import Iterator, Optional, cast
 from unittest import mock
 
 import pytest
-<<<<<<< HEAD
-
-=======
->>>>>>> d109bdb271 (fix test)
 from dagster import (
     AssetIn,
     AssetKey,

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Sequence,
 import dagster._check as check
 from dagster._annotations import public
 from dagster._core.decorator_utils import get_function_params
-from dagster._core.definitions.resource_output import get_resource_args
+from dagster._core.definitions.resource_annotation import get_resource_args
 
 from .events import AssetKey
 from .run_request import RunRequest, SkipReason
