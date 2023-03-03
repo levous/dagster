@@ -3,7 +3,10 @@ from typing import Iterator, Optional, cast
 from unittest import mock
 
 import pytest
+<<<<<<< HEAD
 
+=======
+>>>>>>> d109bdb271 (fix test)
 from dagster import (
     AssetIn,
     AssetKey,
@@ -45,7 +48,6 @@ from dagster import (
 from dagster._config.structured_config import ConfigurableResource
 from dagster._core.definitions.partition import DynamicPartitionsDefinition
 from dagster._core.definitions.resource_annotation import Resource
-from dagster._core.errors import DagsterInvalidDefinitionError, DagsterInvalidInvocationError
 from dagster._core.errors import DagsterInvalidDefinitionError, DagsterInvalidInvocationError
 from dagster._core.execution.build_resources import build_resources
 from dagster._core.test_utils import instance_for_test
@@ -268,7 +270,13 @@ def test_run_status_sensor_invocation_resources() -> None:
     status_sensor(context)
     status_sensor_no_context(context)
 
-    with pytest.raises(CheckError, match="Sensor missing required resources: my_resource"):
+    with pytest.raises(
+        DagsterInvalidDefinitionError,
+        match=(
+            "Resource with key 'my_resource' required by sensor 'status_sensor_no_context' was not"
+            " provided."
+        ),
+    ):
         status_sensor_no_context()
 
 
