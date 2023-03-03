@@ -1,6 +1,7 @@
 import collections.abc
+import inspect
 from functools import update_wrapper
-from typing import Callable, Optional, Sequence, Set, Union
+from typing import Any, Callable, Optional, Sequence, Set, Union
 
 import dagster._check as check
 from dagster._annotations import experimental
@@ -154,7 +155,7 @@ def asset_sensor(
         check.callable_param(fn, "fn")
         sensor_name = name or fn.__name__
 
-        def _wrapped_fn(*args, **kwargs):
+        def _wrapped_fn(*args, **kwargs) -> Any:
             result = fn(*args, **kwargs)
 
             if inspect.isgenerator(result) or isinstance(result, list):
@@ -172,8 +173,8 @@ def asset_sensor(
                     ).format(sensor_name=sensor_name, result=result, type_=type(result))
                 )
 
-        import inspect
-
+        # Preserve any resource arguments from the underlying function, for when we inspect the
+        # wrapped function later on
         _wrapped_fn.__signature__ = inspect.signature(fn)
 
         return AssetSensorDefinition(

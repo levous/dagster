@@ -1107,10 +1107,9 @@ class MultiAssetSensorDefinition(SensorDefinition):
                     instance=context.instance,
                     resource_defs=context.resource_defs,
                 )
-                resource_args_populated = {
-                    resource_name: getattr(context.resources, resource_name)
-                    for resource_name in resource_arg_names
-                }
+                resource_args_populated = validate_and_get_resource_dict(
+                    context.resources, name, resource_arg_names
+                )
 
                 with multi_asset_sensor_context:
                     context_param_name = get_context_param_name(materialization_fn)

@@ -642,10 +642,9 @@ class RunStatusSensorDefinition(SensorDefinition):
 
                 serializable_error = None
 
-                resource_args_populated = {
-                    resource_name: getattr(context.resources, resource_name)
-                    for resource_name in resource_arg_names
-                }
+                resource_args_populated = validate_and_get_resource_dict(
+                    context.resources, name, resource_arg_names
+                )
                 sensor_context = RunStatusSensorContext(
                     sensor_name=name,
                     dagster_run=pipeline_run,

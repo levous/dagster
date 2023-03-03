@@ -13,6 +13,7 @@ from .sensor_definition import (
     RawSensorEvaluationFunctionReturn,
     SensorDefinition,
     SensorType,
+    validate_and_get_resource_dict,
 )
 from .target import ExecutableDefinition
 from .utils import check_valid_name
@@ -27,6 +28,10 @@ class ContextAndEventLogEntryParamNames(NamedTuple):
 
 
 def get_context_and_event_log_entry_param_names(fn: Callable) -> ContextAndEventLogEntryParamNames:
+    """
+    Determines the names of the context and event log entry parameters for an asset sensor function.
+    These are assumed to be the first two non-resource params, in order (context param before event log entry).
+    """
     resource_params = {param.name for param in get_resource_args(fn)}
 
     non_resource_params = [
@@ -122,11 +127,12 @@ class AssetSensorDefinition(SensorDefinition):
                     event_log_entry_param_name,
                 ) = get_context_and_event_log_entry_param_names(materialization_fn)
 
-                resource_args_populated = {
-                    resource_name: getattr(context.resources, resource_name)
-                    for resource_name in resource_arg_names
-                }
+                resource_args_populated = validate_and_get_resource_dict(
+                    context.resources, name, resource_arg_names
+                )
 
+                # Build asset sensor function args, which can include any subset of
+                # context arg, event log entry arg, and any resource args
                 args = {
                     **resource_args_populated,
                     **({context_param_name: context} if context_param_name else {}),
