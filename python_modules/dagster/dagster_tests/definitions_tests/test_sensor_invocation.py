@@ -237,13 +237,13 @@ def test_run_status_sensor_invocation_resources() -> None:
         a_str: str
 
     @run_status_sensor(run_status=DagsterRunStatus.SUCCESS)
-    def status_sensor(context, my_resources: MyResource):
+    def status_sensor(context, my_resource: MyResource):
         assert context.dagster_event.event_type_value == "PIPELINE_SUCCESS"
-        assert my_resources.a_str == "bar"
+        assert my_resource.a_str == "bar"
 
     @run_status_sensor(run_status=DagsterRunStatus.SUCCESS)
-    def status_sensor_no_context(my_resources: MyResource):
-        assert my_resources.a_str == "bar"
+    def status_sensor_no_context(my_resource: MyResource):
+        assert my_resource.a_str == "bar"
 
     @op
     def succeeds():
@@ -264,7 +264,7 @@ def test_run_status_sensor_invocation_resources() -> None:
         dagster_instance=instance,
         dagster_run=dagster_run,
         dagster_event=dagster_event,
-        context=build_sensor_context(resource_defs={"my_resources": MyResource(a_str="bar")}),
+        context=build_sensor_context(resource_defs={"my_resource": MyResource(a_str="bar")}),
     )
 
     status_sensor(context)

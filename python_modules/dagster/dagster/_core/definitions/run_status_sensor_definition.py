@@ -57,6 +57,7 @@ from .sensor_definition import (
     SensorType,
     SkipReason,
     get_context_param_name,
+    validate_and_get_resource_dict,
 )
 from .target import ExecutableDefinition
 from .unresolved_asset_job_definition import UnresolvedAssetJobDefinition
@@ -763,15 +764,11 @@ class RunStatusSensorDefinition(SensorDefinition):
                     list(kwargs.values())[0], "context", RunStatusSensorContext
                 )
 
-        context_resources = context.resources if context else ScopedResourcesBuilder().build(None)
-        check.invariant(
-            all((hasattr(context_resources, k) for k in self._required_resource_keys)),
-            "Sensor missing required resources: {}".format(
-                ", ".join(self._required_resource_keys - set(context_resources.__dict__.keys()))
-            ),
+        resources = validate_and_get_resource_dict(
+            context.resources if context else ScopedResourcesBuilder().build(None),
+            self._name,
+            self._required_resource_keys,
         )
-        resources = {k: getattr(context_resources, k) for k in self._required_resource_keys}
-
         return self._run_status_sensor_fn(**context_param, **resources)
 
     @property

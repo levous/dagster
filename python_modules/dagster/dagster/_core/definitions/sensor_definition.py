@@ -308,20 +308,20 @@ def get_context_param_name(fn: Callable) -> Optional[str]:
     )
 
 
-def _validate_and_get_resource_dict(
-    context: SensorEvaluationContext, sensor_name: str, required_resource_keys: Set[str]
+def validate_and_get_resource_dict(
+    resources: Resources, sensor_name: str, required_resource_keys: Set[str]
 ) -> Dict[str, Any]:
     """
     Validates that the context has all the required resources and returns a dictionary of
     resource key to resource object.
     """
     for k in required_resource_keys:
-        if not hasattr(context.resources, k):
+        if not hasattr(resources, k):
             raise DagsterInvalidDefinitionError(
                 f"Resource with key '{k}' required by sensor '{sensor_name}' was not provided."
             )
 
-    return {k: getattr(context.resources, k) for k in required_resource_keys}
+    return {k: getattr(resources, k) for k in required_resource_keys}
 
 
 def get_or_create_sensor_context(
@@ -484,8 +484,8 @@ class SensorDefinition:
             {context_param_name_if_present: context} if context_param_name_if_present else {}
         )
 
-        resources = _validate_and_get_resource_dict(
-            context, self.name, self._required_resource_keys
+        resources = validate_and_get_resource_dict(
+            context.resources, self.name, self._required_resource_keys
         )
         return self._raw_fn(**context_param, **resources)
 
@@ -707,8 +707,8 @@ def wrap_sensor_evaluation(
     resource_arg_names: Set[str] = {arg.name for arg in get_resource_args(fn)}
 
     def _wrapped_fn(context: SensorEvaluationContext):
-        resource_args_populated = _validate_and_get_resource_dict(
-            context, sensor_name, resource_arg_names
+        resource_args_populated = validate_and_get_resource_dict(
+            context.resources, sensor_name, resource_arg_names
         )
 
         context_param_name_if_present = get_context_param_name(fn)
