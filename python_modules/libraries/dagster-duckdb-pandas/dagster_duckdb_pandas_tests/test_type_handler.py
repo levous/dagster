@@ -36,7 +36,7 @@ def add_one_to_dataframe():
     add_one(a_df())
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
@@ -78,7 +78,7 @@ def b_plus_one(b_df: pd.DataFrame) -> pd.DataFrame:
     return b_df + 1
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
@@ -109,7 +109,7 @@ def b_plus_one_columns(b_df: pd.DataFrame) -> pd.DataFrame:
     return b_df + 1
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
@@ -147,7 +147,7 @@ def not_supported():
     non_supported_type()
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
@@ -189,7 +189,7 @@ def daily_partitioned(context) -> pd.DataFrame:
     )
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
@@ -257,7 +257,7 @@ def static_partitioned(context) -> pd.DataFrame:
     )
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
@@ -327,7 +327,7 @@ def multi_partitioned(context) -> pd.DataFrame:
     )
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
@@ -406,7 +406,7 @@ def dynamic_partitioned(context) -> pd.DataFrame:
     )
 
 
-@pytest.mark.parameterize(
+@pytest.mark.parametrize(
     "io_manager",
     [
         duckdb_pandas_io_manager,
