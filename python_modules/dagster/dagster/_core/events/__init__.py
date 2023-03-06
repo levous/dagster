@@ -25,11 +25,15 @@ from dagster._core.definitions import (
     AssetObservation,
     ExpectationResult,
     HookDefinition,
-    MetadataEntry,
     NodeHandle,
 )
 from dagster._core.definitions.events import AssetLineageInfo, ObjectStoreOperationType
-from dagster._core.definitions.metadata import MetadataValue
+from dagster._core.definitions.metadata import (
+    MetadataFieldSerializer,
+    MetadataValue,
+    RawMetadataValue,
+    normalize_metadata,
+)
 from dagster._core.errors import HookExecutionError
 from dagster._core.execution.context.system import IPlanContext, IStepContext, StepExecutionContext
 from dagster._core.execution.plan.handle import ResolvedFromDynamicStepHandle, StepHandle
@@ -998,14 +1002,14 @@ class DagsterEvent(
     def step_worker_starting(
         step_context: IStepContext,
         message: str,
-        metadata_entries: Sequence[MetadataEntry],
+        metadata: Mapping[str, MetadataValue],
     ) -> "DagsterEvent":
         return DagsterEvent.from_step(
             DagsterEventType.STEP_WORKER_STARTING,
             step_context,
             message=message,
             event_specific_data=EngineEventData(
-                metadata_entries=metadata_entries, marker_start="step_process_start"
+                metadata=metadata, marker_start="step_process_start"
             ),
         )
 
@@ -1014,16 +1018,14 @@ class DagsterEvent(
         log_manager: DagsterLogManager,
         pipeline_name: str,
         message: str,
-        metadata_entries: Sequence[MetadataEntry],
+        metadata: Mapping[str, MetadataValue],
         step_key: Optional[str],
     ) -> "DagsterEvent":
         event = DagsterEvent(
             DagsterEventType.STEP_WORKER_STARTED.value,
             pipeline_name=pipeline_name,
             message=message,
-            event_specific_data=EngineEventData(
-                metadata_entries=metadata_entries, marker_end="step_process_start"
-            ),
+            event_specific_data=EngineEventData(metadata=metadata, marker_end="step_process_start"),
             pid=os.getpid(),
             step_key=step_key,
         )
@@ -1049,7 +1051,7 @@ class DagsterEvent(
             message="Starting initialization of resources [{}].".format(
                 ", ".join(sorted(resource_keys))
             ),
-            event_specific_data=EngineEventData(metadata_entries=[], marker_start="resources"),
+            event_specific_data=EngineEventData(metadata={}, marker_start="resources"),
         )
 
     @staticmethod
@@ -1060,17 +1062,10 @@ class DagsterEvent(
         resource_instances: Mapping[str, Any],
         resource_init_times: Mapping[str, str],
     ) -> "DagsterEvent":
-        metadata_entries = []
+        metadata = {}
         for key in resource_instances.keys():
-            metadata_entries.extend(
-                [
-                    MetadataEntry(
-                        key,
-                        value=MetadataValue.python_artifact(resource_instances[key].__class__),
-                    ),
-                    MetadataEntry(f"{key}:init_time", value=resource_init_times[key]),
-                ]
-            )
+            metadata[key] = MetadataValue.python_artifact(resource_instances[key].__class__)
+            metadata[f"{key}:init_time"] = resource_init_times[key]
 
         return DagsterEvent.from_resource(
             DagsterEventType.RESOURCE_INIT_SUCCESS,
@@ -1081,7 +1076,7 @@ class DagsterEvent(
                 ", ".join(sorted(resource_init_times.keys()))
             ),
             event_specific_data=EngineEventData(
-                metadata_entries=metadata_entries,
+                metadata=metadata,
                 marker_end="resources",
             ),
         )
@@ -1101,7 +1096,7 @@ class DagsterEvent(
             log_manager=log_manager,
             message="Initialization of resources [{}] failed.".format(", ".join(resource_keys)),
             event_specific_data=EngineEventData(
-                metadata_entries=[],
+                metadata={},
                 marker_end="resources",
                 error=error,
             ),
@@ -1122,7 +1117,7 @@ class DagsterEvent(
             log_manager=log_manager,
             message="Teardown of resources [{}] failed.".format(", ".join(resource_keys)),
             event_specific_data=EngineEventData(
-                metadata_entries=[],
+                metadata={},
                 marker_start=None,
                 marker_end=None,
                 error=error,
@@ -1217,11 +1212,7 @@ class DagsterEvent(
                 op=object_store_operation_result.op,
                 value_name=value_name,
                 address=object_store_operation_result.key,
-                metadata_entries=[
-                    MetadataEntry(
-                        "key", value=MetadataValue.path(object_store_operation_result.key)
-                    ),
-                ],
+                metadata={"key": MetadataValue.path(object_store_operation_result.key)},
                 version=object_store_operation_result.version,
                 mapping_key=object_store_operation_result.mapping_key,
             ),
@@ -1234,7 +1225,7 @@ class DagsterEvent(
         output_name: str,
         manager_key: str,
         message_override: Optional[str] = None,
-        metadata_entries: Optional[Sequence[MetadataEntry]] = None,
+        metadata: Optional[Mapping[str, MetadataValue]] = None,
     ) -> "DagsterEvent":
         message = f'Handled output "{output_name}" using IO manager "{manager_key}"'
         return DagsterEvent.from_step(
@@ -1243,7 +1234,7 @@ class DagsterEvent(
             event_specific_data=HandledOutputData(
                 output_name=output_name,
                 manager_key=manager_key,
-                metadata_entries=metadata_entries if metadata_entries else [],
+                metadata=metadata if metadata else {},
             ),
             message=message_override or message,
         )
@@ -1256,7 +1247,7 @@ class DagsterEvent(
         upstream_output_name: Optional[str] = None,
         upstream_step_key: Optional[str] = None,
         message_override: Optional[str] = None,
-        metadata_entries: Optional[Sequence[MetadataEntry]] = None,
+        metadata: Optional[Mapping[str, MetadataValue]] = None,
     ) -> "DagsterEvent":
         message = f'Loaded input "{input_name}" using input manager "{manager_key}"'
         if upstream_output_name:
@@ -1270,7 +1261,7 @@ class DagsterEvent(
                 manager_key=manager_key,
                 upstream_output_name=upstream_output_name,
                 upstream_step_key=upstream_step_key,
-                metadata_entries=metadata_entries if metadata_entries else [],
+                metadata=metadata if metadata else {},
             ),
             message=message_override or message,
         )
@@ -1468,14 +1459,17 @@ class StepExpectationResultData(
         )
 
 
-@whitelist_for_serdes
+@whitelist_for_serdes(
+    storage_field_names={"metadata": "metadata_entries"},
+    field_serializers={"metadata": MetadataFieldSerializer},
+)
 class ObjectStoreOperationResultData(
     NamedTuple(
         "_ObjectStoreOperationResultData",
         [
             ("op", ObjectStoreOperationType),
             ("value_name", Optional[str]),
-            ("metadata_entries", Sequence[MetadataEntry]),
+            ("metadata", Mapping[str, MetadataValue]),
             ("address", Optional[str]),
             ("version", Optional[str]),
             ("mapping_key", Optional[str]),
@@ -1486,7 +1480,7 @@ class ObjectStoreOperationResultData(
         cls,
         op: ObjectStoreOperationType,
         value_name: Optional[str] = None,
-        metadata_entries: Optional[Sequence[MetadataEntry]] = None,
+        metadata: Optional[Mapping[str, MetadataValue]] = None,
         address: Optional[str] = None,
         version: Optional[str] = None,
         mapping_key: Optional[str] = None,
@@ -1495,8 +1489,8 @@ class ObjectStoreOperationResultData(
             cls,
             op=cast(ObjectStoreOperationType, check.str_param(op, "op")),
             value_name=check.opt_str_param(value_name, "value_name"),
-            metadata_entries=check.opt_sequence_param(
-                metadata_entries, "metadata_entries", of_type=MetadataEntry
+            metadata=normalize_metadata(
+                check.opt_mapping_param(metadata, "metadata", key_type=str)
             ),
             address=check.opt_str_param(address, "address"),
             version=check.opt_str_param(version, "version"),
@@ -1504,12 +1498,15 @@ class ObjectStoreOperationResultData(
         )
 
 
-@whitelist_for_serdes
+@whitelist_for_serdes(
+    storage_field_names={"metadata": "metadata_entries"},
+    field_serializers={"metadata": MetadataFieldSerializer},
+)
 class EngineEventData(
     NamedTuple(
         "_EngineEventData",
         [
-            ("metadata_entries", Sequence[MetadataEntry]),
+            ("metadata", Mapping[str, MetadataValue]),
             ("error", Optional[SerializableErrorInfo]),
             ("marker_start", Optional[str]),
             ("marker_end", Optional[str]),
@@ -1522,15 +1519,15 @@ class EngineEventData(
     #
     def __new__(
         cls,
-        metadata_entries: Optional[Sequence[MetadataEntry]] = None,
+        metadata: Optional[Mapping[str, RawMetadataValue]] = None,
         error: Optional[SerializableErrorInfo] = None,
         marker_start: Optional[str] = None,
         marker_end: Optional[str] = None,
     ):
         return super(EngineEventData, cls).__new__(
             cls,
-            metadata_entries=check.opt_sequence_param(
-                metadata_entries, "metadata_entries", of_type=MetadataEntry
+            metadata=normalize_metadata(
+                check.opt_mapping_param(metadata, "metadata", key_type=str)
             ),
             error=check.opt_inst_param(error, "error", SerializableErrorInfo),
             marker_start=check.opt_str_param(marker_start, "marker_start"),
@@ -1542,12 +1539,14 @@ class EngineEventData(
         pid: int, step_keys_to_execute: Optional[Sequence[str]] = None
     ) -> "EngineEventData":
         return EngineEventData(
-            metadata_entries=[MetadataEntry("pid", value=str(pid))]
-            + (
-                [MetadataEntry("step_keys", value=str(step_keys_to_execute))]
-                if step_keys_to_execute
-                else []
-            ),
+            metadata={
+                "pid": MetadataValue.text(str(pid)),
+                **(
+                    {"step_keys": MetadataValue.text(str(step_keys_to_execute))}
+                    if step_keys_to_execute
+                    else {}
+                ),
+            }
         )
 
     @staticmethod
@@ -1555,23 +1554,25 @@ class EngineEventData(
         pid: int, step_keys_to_execute: Optional[Sequence[str]] = None
     ) -> "EngineEventData":
         return EngineEventData(
-            metadata_entries=[MetadataEntry("pid", value=str(pid))]
-            + (
-                [MetadataEntry("step_keys", value=str(step_keys_to_execute))]
-                if step_keys_to_execute
-                else []
-            )
+            metadata={
+                "pid": MetadataValue.text(str(pid)),
+                **(
+                    {"step_keys": MetadataValue.text(str(step_keys_to_execute))}
+                    if step_keys_to_execute
+                    else {}
+                ),
+            }
         )
 
     @staticmethod
     def interrupted(steps_interrupted: Sequence[str]) -> "EngineEventData":
         return EngineEventData(
-            metadata_entries=[MetadataEntry("steps_interrupted", value=str(steps_interrupted))]
+            metadata={"steps_interrupted": MetadataValue.text(str(steps_interrupted))}
         )
 
     @staticmethod
     def engine_error(error: SerializableErrorInfo) -> "EngineEventData":
-        return EngineEventData(metadata_entries=[], error=error)
+        return EngineEventData(metadata={}, error=error)
 
 
 @whitelist_for_serdes
@@ -1619,14 +1620,17 @@ class HookErroredData(
         )
 
 
-@whitelist_for_serdes
+@whitelist_for_serdes(
+    storage_field_names={"metadata": "metadata_entries"},
+    field_serializers={"metadata": MetadataFieldSerializer},
+)
 class HandledOutputData(
     NamedTuple(
         "_HandledOutputData",
         [
             ("output_name", str),
             ("manager_key", str),
-            ("metadata_entries", Sequence[MetadataEntry]),
+            ("metadata", Mapping[str, MetadataValue]),
         ],
     )
 ):
@@ -1634,19 +1638,22 @@ class HandledOutputData(
         cls,
         output_name: str,
         manager_key: str,
-        metadata_entries: Optional[Sequence[MetadataEntry]] = None,
+        metadata: Optional[Mapping[str, MetadataValue]] = None,
     ):
         return super(HandledOutputData, cls).__new__(
             cls,
             output_name=check.str_param(output_name, "output_name"),
             manager_key=check.str_param(manager_key, "manager_key"),
-            metadata_entries=check.opt_sequence_param(
-                metadata_entries, "metadata_entries", of_type=MetadataEntry
+            metadata=normalize_metadata(
+                check.opt_mapping_param(metadata, "metadata", key_type=str)
             ),
         )
 
 
-@whitelist_for_serdes
+@whitelist_for_serdes(
+    storage_field_names={"metadata": "metadata_entries"},
+    field_serializers={"metadata": MetadataFieldSerializer},
+)
 class LoadedInputData(
     NamedTuple(
         "_LoadedInputData",
@@ -1655,7 +1662,7 @@ class LoadedInputData(
             ("manager_key", str),
             ("upstream_output_name", Optional[str]),
             ("upstream_step_key", Optional[str]),
-            ("metadata_entries", Optional[Sequence[MetadataEntry]]),
+            ("metadata", Mapping[str, MetadataValue]),
         ],
     )
 ):
@@ -1665,7 +1672,7 @@ class LoadedInputData(
         manager_key: str,
         upstream_output_name: Optional[str] = None,
         upstream_step_key: Optional[str] = None,
-        metadata_entries: Optional[Sequence[MetadataEntry]] = None,
+        metadata: Optional[Mapping[str, MetadataValue]] = None,
     ):
         return super(LoadedInputData, cls).__new__(
             cls,
@@ -1673,8 +1680,8 @@ class LoadedInputData(
             manager_key=check.str_param(manager_key, "manager_key"),
             upstream_output_name=check.opt_str_param(upstream_output_name, "upstream_output_name"),
             upstream_step_key=check.opt_str_param(upstream_step_key, "upstream_step_key"),
-            metadata_entries=check.opt_sequence_param(
-                metadata_entries, "metadata_entries", of_type=MetadataEntry
+            metadata=normalize_metadata(
+                check.opt_mapping_param(metadata, "metadata", key_type=str)
             ),
         )
 

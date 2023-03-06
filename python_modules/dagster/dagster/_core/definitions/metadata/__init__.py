@@ -11,13 +11,11 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    TypeVar,
     Union,
     cast,
-    overload,
 )
 
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, TypeVar
 
 import dagster._check as check
 import dagster._seven as seven
@@ -25,7 +23,11 @@ from dagster._annotations import PublicAttr, experimental, public
 from dagster._core.errors import DagsterInvalidMetadata
 from dagster._serdes import whitelist_for_serdes
 from dagster._serdes.serdes import (
+    FieldSerializer,
     PackableValue,
+    WhitelistMap,
+    pack_value,
+    unpack_value,
 )
 from dagster._utils.backcompat import (
     canonicalize_backcompat_args,
@@ -59,88 +61,47 @@ RawMetadataValue = Union[
 MetadataMapping: TypeAlias = Mapping[str, "MetadataValue"]
 MetadataUserInput: TypeAlias = Mapping[str, RawMetadataValue]
 
-T_Packable = TypeVar("T_Packable", bound=PackableValue)
+T_Packable = TypeVar("T_Packable", bound=PackableValue, default=PackableValue, covariant=True)
 
 # ########################
 # ##### NORMALIZATION
 # ########################
 
 
-@overload
 def normalize_metadata(
     metadata: Mapping[str, RawMetadataValue],
-    metadata_entries: Sequence["MetadataEntry"],
     allow_invalid: bool = False,
-) -> Sequence["MetadataEntry"]:
-    ...
-
-
-@overload
-def normalize_metadata(
-    metadata: Mapping[str, RawMetadataValue],
-    metadata_entries: Sequence["MetadataEntry"],
-    allow_invalid: bool = False,
-) -> Sequence["MetadataEntry"]:
-    ...
-
-
-def normalize_metadata(
-    metadata: Mapping[str, RawMetadataValue],
-    metadata_entries: Sequence["MetadataEntry"],
-    allow_invalid: bool = False,
-) -> Sequence["MetadataEntry"]:
-    if metadata and metadata_entries:
-        raise DagsterInvalidMetadata(
-            "Attempted to provide both `metadata` and `metadata_entries` arguments to an event. "
-            "Must provide only one of the two."
-        )
-
-    if metadata_entries:
-        deprecation_warning(
-            'Argument "metadata_entries"',
-            "1.0.0",
-            additional_warn_txt=(
-                "Use argument `metadata` instead. The `MetadataEntry` `description` attribute is"
-                " also deprecated-- argument `metadata` takes a label: value dictionary."
-            ),
-            stacklevel=4,  # to get the caller of `normalize_metadata`
-        )
-        return check.sequence_param(metadata_entries, "metadata_entries", MetadataEntry)
-
+) -> Mapping[str, "MetadataValue"]:
     # This is a stopgap measure to deal with unsupported metadata values, which occur when we try
     # to convert arbitrary metadata (on e.g. OutputDefinition) to a MetadataValue, which is required
     # for serialization. This will cause unsupported values to be silently replaced with a
     # string placeholder.
-    elif allow_invalid:
-        metadata_entries = []
-        for k, v in metadata.items():
-            try:
-                metadata_entries.append(package_metadata_value(k, v))
-            except DagsterInvalidMetadata:
+    normalized_metadata: Dict[str, MetadataValue] = {}
+    for k, v in metadata.items():
+        try:
+            normalized_value = normalize_metadata_value(v)
+        except DagsterInvalidMetadata as e:
+            if allow_invalid:
                 deprecation_warning(
                     "Support for arbitrary metadata values",
-                    "1.0.0",
+                    "1.4.0",
                     additional_warn_txt=(
                         "In the future, all user-supplied metadata values must be one of"
                         f" {RawMetadataValue}"
                     ),
                     stacklevel=4,  # to get the caller of `normalize_metadata`
                 )
-                metadata_entries.append(
-                    MetadataEntry(
-                        value=TextMetadataValue(f"[{v.__class__.__name__}] (unserializable)"),
-                        label=k,
-                    )
-                )
-        return metadata_entries
+                normalized_value = TextMetadataValue(f"[{v.__class__.__name__}] (unserializable)")
+            else:
+                raise DagsterInvalidMetadata(
+                    f'Could not resolve the metadata value for "{k}" to a known type. {e}'
+                ) from None
+        normalized_metadata[k] = normalized_value  # type: ignore
 
-    return [
-        package_metadata_value(k, v)
-        for k, v in check.opt_mapping_param(metadata, "metadata", key_type=str).items()
-    ]
+    return normalized_metadata
 
 
-def normalize_metadata_value(raw_value: RawMetadataValue) -> "MetadataValue":
+def normalize_metadata_value(raw_value: RawMetadataValue) -> "MetadataValue[Any]":
     from dagster._core.definitions.events import AssetKey
 
     if isinstance(raw_value, MetadataValue):
@@ -168,23 +129,6 @@ def normalize_metadata_value(raw_value: RawMetadataValue) -> "MetadataValue":
         f"Its type was {type(raw_value)}. Consider wrapping the value with the appropriate "
         "MetadataValue type."
     )
-
-
-def package_metadata_value(label: str, raw_value: RawMetadataValue) -> "MetadataEntry":
-    check.str_param(label, "label")
-
-    if isinstance(raw_value, MetadataEntry):
-        raise DagsterInvalidMetadata(
-            f"Expected a metadata value, found an instance of {raw_value.__class__.__name__}."
-            " Consider instead using a MetadataValue wrapper for the value."
-        )
-    try:
-        value = normalize_metadata_value(raw_value)
-    except DagsterInvalidMetadata as e:
-        raise DagsterInvalidMetadata(
-            f'Could not resolve the metadata value for "{label}" to a known type. {e}'
-        ) from None
-    return MetadataEntry(label=label, value=value)
 
 
 # ########################
@@ -965,6 +909,50 @@ class NullMetadataValue(NamedTuple("_NullMetadataValue", []), MetadataValue[None
 # ########################
 # ##### METADATA ENTRY
 # ########################
+
+
+class MetadataFieldSerializer(FieldSerializer):
+    """Converts between metadata dict (new) and metadata entries list (old)."""
+
+    storage_name = "metadata_entries"
+    loaded_name = "metadata"
+
+    def pack(
+        self,
+        metadata_dict: Mapping[str, MetadataValue],
+        whitelist_map: WhitelistMap,
+        descent_path: str,
+    ) -> Sequence[Mapping[str, Any]]:
+        return [
+            {
+                "__class__": "MetadataEntry",
+                "label": k,
+                # MetadataValue itself can't inherit from NamedTuple and so isn't a PackableValue,
+                # but one of its subclasses will always be returned here.
+                "entry_data": pack_value(v, whitelist_map, descent_path),  # type: ignore
+                "description": None,
+            }
+            for k, v in metadata_dict.items()
+        ]
+
+    def unpack(
+        self,
+        metadata_entries: List[Mapping[str, Any]],
+        whitelist_map: WhitelistMap,
+        descent_path: str,
+    ) -> Mapping[str, MetadataValue]:
+        return {
+            e["label"]: unpack_value(
+                e["entry_data"],
+                # MetadataValue itself can't inherit from NamedTuple and so isn't a PackableValue,
+                # but one of its subclasses will always be returned here.
+                as_type=MetadataValue,  # type: ignore
+                whitelist_map=whitelist_map,
+                descent_path=descent_path,
+            )
+            for e in metadata_entries
+        }
+
 
 T_MetadataValue = TypeVar("T_MetadataValue", bound=MetadataValue, covariant=True)
 

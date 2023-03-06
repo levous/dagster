@@ -1920,7 +1920,7 @@ class DagsterInstance(DynamicPartitionsStore):
             engine_event_data,
             "engine_event_data",
             EngineEventData,
-            EngineEventData([]),
+            EngineEventData({}),
         )
 
         if cls:

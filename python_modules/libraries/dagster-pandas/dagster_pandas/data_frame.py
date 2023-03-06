@@ -3,7 +3,6 @@ from dagster import (
     DagsterInvariantViolationError,
     DagsterType,
     Field,
-    MetadataEntry,
     MetadataValue,
     StringSource,
     TableColumn,
@@ -14,13 +13,12 @@ from dagster import (
     dagster_type_loader,
 )
 from dagster._annotations import experimental
-from dagster._check import CheckError
 from dagster._config import Selector
 from dagster._core.definitions.metadata import normalize_metadata
-from dagster._core.errors import DagsterInvalidMetadata
 from dagster._utils import dict_without_keys
 
 from dagster_pandas.constraints import (
+    CONSTRAINT_METADATA_KEY,
     ColumnDTypeFnConstraint,
     ColumnDTypeInSetConstraint,
     ConstraintViolationException,
@@ -66,11 +64,11 @@ def df_type_check(_, value):
         return TypeCheck(success=False)
     return TypeCheck(
         success=True,
-        metadata_entries=[
-            MetadataEntry("row_count", value=str(len(value))),
+        metadata={
+            "row_count": str(len(value)),
             # string cast columns since they may be things like datetime
-            MetadataEntry("metadata", value={"columns": list(map(str, value.columns))}),
-        ],
+            "metadata": {"columns": list(map(str, value.columns))},
+        },
     )
 
 
@@ -161,9 +159,9 @@ def create_dagster_pandas_dataframe_type(
         description (Optional[str]): A markdown-formatted string, displayed in tooling.
         columns (Optional[List[PandasColumn]]): A list of :py:class:`~dagster.PandasColumn` objects
             which express dataframe column schemas and constraints.
-        event_metadata_fn (Optional[Callable[[], Union[Dict[str, Union[str, float, int, Dict, MetadataValue]], List[MetadataEntry]]]]):
+        event_metadata_fn (Optional[Callable[[], Union[Dict[str, Union[str, float, int, Dict, MetadataValue]])
             A callable which takes your dataframe and returns a dict with string label keys and
-            MetadataValue values. Can optionally return a List[MetadataEntry].
+            MetadataValue values.
         dataframe_constraints (Optional[List[DataFrameConstraint]]): A list of objects that inherit from
             :py:class:`~dagster.DataFrameConstraint`. This allows you to express dataframe-level constraints.
         loader (Optional[DagsterTypeLoader]): An instance of a class that
@@ -200,7 +198,7 @@ def create_dagster_pandas_dataframe_type(
 
         return TypeCheck(
             success=True,
-            metadata_entries=_execute_summary_stats(name, value, event_metadata_fn)
+            metadata=_execute_summary_stats(name, value, event_metadata_fn)
             if event_metadata_fn
             else None,
         )
@@ -266,7 +264,7 @@ def create_structured_dataframe_type(
             )
 
         typechecks_succeeded = True
-        metadata = []
+        metadata = {}
         overall_description = "Failed Constraints: {}"
         constraint_clauses = []
         for key, result in individual_result_dict.items():
@@ -274,19 +272,14 @@ def create_structured_dataframe_type(
             if result_val:
                 continue
             typechecks_succeeded = typechecks_succeeded and result_val
-            result_dict = result.metadata_entries[0].value.data
-            metadata.append(
-                MetadataEntry(
-                    "{}-constraint-metadata".format(key),
-                    value=result_dict,
-                )
-            )
+            result_dict = result.metadata[CONSTRAINT_METADATA_KEY].data
+            metadata["{}-constraint-metadata".format(key)] = MetadataValue.json(result_dict)
             constraint_clauses.append("{} failing constraints, {}".format(key, result.description))
         # returns aggregates, then column, then dataframe
         return TypeCheck(
             success=typechecks_succeeded,
             description=overall_description.format(constraint_clauses),
-            metadata_entries=sorted(metadata, key=lambda x: x.label),
+            metadata=metadata,
         )
 
     description = check.opt_str_param(description, "description", default="")
@@ -302,25 +295,14 @@ def _execute_summary_stats(type_name, value, event_metadata_fn):
     if not event_metadata_fn:
         return []
 
-    metadata_or_metadata_entries = event_metadata_fn(value)
-
-    invalid_message = (
-        "The return value of the user-defined summary_statistics function for pandas "
-        f"data frame type {type_name} returned {value}. This function must return "
-        "Union[Dict[str, Union[str, float, int, Dict, MetadataValue]], List[MetadataEntry]]"
-    )
-
-    metadata = None
-    metadata_entries = None
-
-    if isinstance(metadata_or_metadata_entries, list):
-        metadata_entries = metadata_or_metadata_entries
-    elif isinstance(metadata_or_metadata_entries, dict):
-        metadata = metadata_or_metadata_entries
-    else:
-        raise DagsterInvariantViolationError(invalid_message)
+    metadata = event_metadata_fn(value)
 
     try:
-        return normalize_metadata(metadata, metadata_entries)
-    except (DagsterInvalidMetadata, CheckError):
-        raise DagsterInvariantViolationError(invalid_message)
+        assert isinstance(metadata, dict)
+        return normalize_metadata(metadata)
+    except:
+        raise DagsterInvariantViolationError(
+            "The return value of the user-defined summary_statistics function for pandas "
+            f"data frame type {type_name} returned {value}. This function must return "
+            "Dict[str, RawMetadataValue]."
+        )

@@ -1,6 +1,5 @@
 from dagster import (
     DagsterInstance,
-    MetadataEntry,
     _check as check,
 )
 from dagster._core.definitions.reconstruct import ReconstructablePipeline
@@ -50,10 +49,10 @@ def create_task(celery_app, **task_kwargs):
             "Executing steps {} in celery worker".format(step_keys_str),
             pipeline_run,
             EngineEventData(
-                [
-                    MetadataEntry("step_keys", value=step_keys_str),
-                    MetadataEntry("Celery worker", value=self.request.hostname),
-                ],
+                {
+                    "step_keys": step_keys_str,
+                    "Celery worker": self.request.hostname,
+                },
                 marker_end=DELEGATE_MARKER,
             ),
             CeleryExecutor,
