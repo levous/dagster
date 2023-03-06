@@ -18,12 +18,7 @@ from dagster import (
     op,
 )
 from dagster._check import CheckError
-from dagster_duckdb import build_configurable_duckdb_io_manager
-from dagster_duckdb_pandas import DuckDBPandasTypeHandler, duckdb_pandas_io_manager
-
-configurable_io_manager = build_configurable_duckdb_io_manager(
-    type_handlers=[DuckDBPandasTypeHandler()], default_load_type=pd.DataFrame
-)
+from dagster_duckdb_pandas import configurable_duckdb_pandas_io_manager, duckdb_pandas_io_manager
 
 
 @op(out=Out(metadata={"schema": "a_df"}))
@@ -45,7 +40,7 @@ def add_one_to_dataframe():
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_duckdb_io_manager_with_ops(tmp_path, io_manager):
@@ -87,7 +82,7 @@ def b_plus_one(b_df: pd.DataFrame) -> pd.DataFrame:
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_duckdb_io_manager_with_assets(tmp_path, io_manager):
@@ -118,7 +113,7 @@ def b_plus_one_columns(b_df: pd.DataFrame) -> pd.DataFrame:
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_loading_columns(tmp_path, io_manager):
@@ -156,7 +151,7 @@ def not_supported():
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_not_supported_type(tmp_path, io_manager):
@@ -198,7 +193,7 @@ def daily_partitioned(context) -> pd.DataFrame:
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_time_window_partitioned_asset(tmp_path, io_manager):
@@ -266,7 +261,7 @@ def static_partitioned(context) -> pd.DataFrame:
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_static_partitioned_asset(tmp_path, io_manager):
@@ -336,7 +331,7 @@ def multi_partitioned(context) -> pd.DataFrame:
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_multi_partitioned_asset(tmp_path, io_manager):
@@ -415,7 +410,7 @@ def dynamic_partitioned(context) -> pd.DataFrame:
     "io_manager",
     [
         duckdb_pandas_io_manager,
-        configurable_io_manager,
+        configurable_duckdb_pandas_io_manager,
     ],
 )
 def test_dynamic_partition(tmp_path, io_manager):
