@@ -182,11 +182,6 @@ def build_caching_repository_data_from_list(
                 )
             # we can only resolve these once we have all assets
             unresolved_jobs[definition.name] = definition
-        elif isinstance(definition, AssetGroup):
-            if combined_asset_group:
-                combined_asset_group += definition
-            else:
-                combined_asset_group = definition
         elif isinstance(definition, AssetsDefinition):
             for key in definition.keys:
                 if key in asset_keys:
