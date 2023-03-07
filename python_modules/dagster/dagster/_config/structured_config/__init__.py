@@ -411,6 +411,7 @@ class ConfigurableResource(
 
         # Resolve e.g. EnvVar values
         resolved_config_dict = config_dictionary_from_values(data_without_resources, schema)
+
         curried_schema = _curry_config_schema(schema, resolved_config_dict)
 
         Config.__init__(self, **{**data_without_resources, **resource_pointers})
