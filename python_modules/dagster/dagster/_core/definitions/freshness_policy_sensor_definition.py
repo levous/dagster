@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Mapping, NamedTuple, Optional, Set, cast
+from typing import TYPE_CHECKING, Callable, Dict, Mapping, NamedTuple, Optional, Set, cast
 
 import pendulum
 
@@ -31,7 +31,8 @@ from .sensor_definition import (
     SensorEvaluationContext,
     SensorType,
     SkipReason,
-    get_context_param_name,
+    context_param_name_if_present,
+    get_or_create_sensor_context_base,
     validate_and_get_resource_dict,
 )
 
@@ -275,7 +276,7 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
                 resource_args_populated = validate_and_get_resource_dict(
                     context.resources, name, resource_arg_names
                 )
-                context_param_name = get_context_param_name(freshness_policy_sensor_fn)
+                context_param_name = context_param_name_if_present(freshness_policy_sensor_fn)
                 freshness_context = FreshnessPolicySensorContext(
                     sensor_name=name,
                     asset_key=asset_key,
@@ -290,14 +291,13 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
                     FreshnessPolicySensorExecutionError,
                     lambda: f'Error occurred during the execution of sensor "{name}".',
                 ):
-                    if context_param_name:
-                        result = freshness_policy_sensor_fn(
-                            **{context_param_name: freshness_context},
-                            **resource_args_populated,
-                        )
-                    else:
-                        result = freshness_policy_sensor_fn(**resource_args_populated)
-
+                    context_param = (
+                        {context_param_name: freshness_context} if context_param_name else {}
+                    )
+                    result = freshness_policy_sensor_fn(
+                        **context_param,
+                        **resource_args_populated,
+                    )
                 if result is not None:
                     raise DagsterInvalidDefinitionError(
                         "Functions decorated by `@freshness_policy_sensor` may not return or yield"
@@ -318,52 +318,20 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
         )
 
     def __call__(self, *args, **kwargs) -> None:
-        context_param_name = get_context_param_name(self._freshness_policy_sensor_fn)
-        if len(args) + len(kwargs) > 1:
-            raise DagsterInvalidInvocationError(
-                "Freshness policy sensor invocation received multiple arguments. Only a first "
-                "positional context parameter should be provided when invoking."
-            )
+        context_param_name = context_param_name_if_present(self._freshness_policy_sensor_fn)
 
-        context_param: Mapping[str, Any] = {}
-
-        if context_param_name:
-            if len(args) + len(kwargs) == 0:
-                raise DagsterInvalidInvocationError(
-                    "Freshness policy sensor function expected context argument, but no context"
-                    " argument was provided when invoking."
-                )
-
-            if args:
-                context = check.opt_inst_param(
-                    args[0], context_param_name, FreshnessPolicySensorContext
-                )
-            else:
-                if context_param_name not in kwargs:
-                    raise DagsterInvalidInvocationError(
-                        "Freshness policy sensor invocation expected argument"
-                        f" '{context_param_name}'."
-                    )
-                context = check.opt_inst_param(
-                    kwargs[context_param_name],
-                    context_param_name,
-                    FreshnessPolicySensorContext,
-                )
-            context_param = {context_param_name: context}
-
-        else:
-            # We still optionally take a context arg even if the underlying function doesn't require it
-            # this is so that we can pass resources if the sensor needs any
-            context: Optional[SensorEvaluationContext] = None
-            if args:
-                context = check.opt_inst_param(args[0], "context", SensorEvaluationContext)
-            elif kwargs:
-                context = check.opt_inst_param(
-                    list(kwargs.values())[0], "context", SensorEvaluationContext
-                )
+        sensor_context = get_or_create_sensor_context_base(
+            self._freshness_policy_sensor_fn,
+            *args,
+            context_type=FreshnessPolicySensorContext,
+            **kwargs,
+        )
+        context_param = (
+            {context_param_name: sensor_context} if context_param_name and sensor_context else {}
+        )
 
         resources = validate_and_get_resource_dict(
-            context.resources if context else ScopedResourcesBuilder().build(None),
+            sensor_context.resources if sensor_context else ScopedResourcesBuilder().build(None),
             self._name,
             self._required_resource_keys,
         )

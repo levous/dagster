@@ -1,5 +1,5 @@
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Sequence, Set
+from typing import Any, Callable, NamedTuple, Optional, Sequence, Set
 
 import dagster._check as check
 from dagster._annotations import public
@@ -17,9 +17,6 @@ from .sensor_definition import (
 )
 from .target import ExecutableDefinition
 from .utils import check_valid_name
-
-if TYPE_CHECKING:
-    pass
 
 
 class ContextAndEventLogEntryParamNames(NamedTuple):
@@ -133,15 +130,11 @@ class AssetSensorDefinition(SensorDefinition):
 
                 # Build asset sensor function args, which can include any subset of
                 # context arg, event log entry arg, and any resource args
-                args = {
-                    **resource_args_populated,
-                    **({context_param_name: context} if context_param_name else {}),
-                    **(
-                        {event_log_entry_param_name: event_record.event_log_entry}
-                        if event_log_entry_param_name
-                        else {}
-                    ),
-                }
+                args = resource_args_populated
+                if context_param_name:
+                    args[context_param_name] = context
+                if event_log_entry_param_name:
+                    args[event_log_entry_param_name] = event_record.event_log_entry
 
                 result = materialization_fn(**args)
                 if inspect.isgenerator(result) or isinstance(result, list):

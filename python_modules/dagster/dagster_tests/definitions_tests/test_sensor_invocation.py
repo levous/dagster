@@ -260,6 +260,18 @@ def test_run_status_sensor_invocation_resources() -> None:
         dagster_instance=instance,
         dagster_run=dagster_run,
         dagster_event=dagster_event,
+        resource_defs={"my_resource": MyResource(a_str="bar")},
+    )
+
+    status_sensor(context)
+    status_sensor_no_context(context)
+
+    # also keeps resources from nested `context`
+    context = build_run_status_sensor_context(
+        sensor_name="status_sensor",
+        dagster_instance=instance,
+        dagster_run=dagster_run,
+        dagster_event=dagster_event,
         context=build_sensor_context(resource_defs={"my_resource": MyResource(a_str="bar")}),
     )
 
