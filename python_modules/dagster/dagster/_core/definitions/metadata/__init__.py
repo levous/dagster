@@ -1,5 +1,6 @@
 import os
 from abc import ABC, abstractmethod
+from inspect import Parameter
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -10,8 +11,8 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
+    Type,
     Union,
-    cast,
     overload,
 )
 
@@ -22,8 +23,8 @@ import dagster._seven as seven
 from dagster._annotations import PublicAttr, experimental, public
 from dagster._core.errors import DagsterInvalidMetadata
 from dagster._serdes import whitelist_for_serdes
+from dagster._serdes.serdes import DefaultNamedTupleSerializer, WhitelistMap, replace_storage_keys
 from dagster._utils.backcompat import (
-    canonicalize_backcompat_args,
     deprecation_warning,
     experimental_class_warning,
 )
@@ -946,20 +947,58 @@ class NullMetadataValue(NamedTuple("_NullMetadataValue", []), MetadataValue):
 # ########################
 
 
+class MetadataEntrySerializer(DefaultNamedTupleSerializer):
+    """Custom serializer for MetadataEntry.
+    This is necessary to support backcompat.
+    """
+
+    @classmethod
+    def value_from_storage_dict(
+        cls,
+        storage_dict: Dict[str, Any],
+        klass: Type["MetadataEntry"],
+        args_for_class: Mapping[str, Parameter],
+        whitelist_map: WhitelistMap,
+        descent_path: str,
+    ):
+        storage_dict = replace_storage_keys(storage_dict, {"entry_data": "value"})
+        if "description" in storage_dict:
+            del storage_dict["description"]
+        return super().value_from_storage_dict(
+            storage_dict, klass, args_for_class, whitelist_map, descent_path
+        )
+
+    @classmethod
+    def value_to_storage_dict(
+        cls,
+        value: NamedTuple,
+        whitelist_map: WhitelistMap,
+        descent_path: str,
+    ) -> Dict[str, Any]:
+        storage_dict = super().value_to_storage_dict(
+            value,
+            whitelist_map,
+            descent_path,
+        )
+        # So older version of dagster can read this
+        storage_dict["description"] = None
+        return replace_storage_keys(
+            storage_dict,
+            {
+                "value": "entry_data",
+            },
+        )
+
+
 # NOTE: This would better be implemented as a generic with `MetadataValue` set as a
 # typevar, but as of 2022-01-25 mypy does not support generics on NamedTuple.
-#
-# NOTE: This currently stores value in the `entry_data` NamedTuple attribute. In the next release,
-# we will change the name of the NamedTuple property to `value`, and need to implement custom
-# serialization so that it continues to be saved as `entry_data` for backcompat purposes.
-@whitelist_for_serdes(storage_name="EventMetadataEntry")
+@whitelist_for_serdes(storage_name="EventMetadataEntry", serializer=MetadataEntrySerializer)
 class MetadataEntry(
     NamedTuple(
         "_MetadataEntry",
         [
             ("label", PublicAttr[str]),
-            ("description", PublicAttr[Optional[str]]),
-            ("entry_data", PublicAttr[MetadataValue]),
+            ("value", PublicAttr[MetadataValue]),
         ],
     ),
 ):
@@ -974,7 +1013,6 @@ class MetadataEntry(
 
     Args:
         label (str): Short display label for this metadata entry.
-        description (Optional[str]): A human-readable description of this metadata entry.
         value (MetadataValue): Typed metadata entry data. The different types allow
             for customized display in tools like dagit.
     """
@@ -982,38 +1020,15 @@ class MetadataEntry(
     def __new__(
         cls,
         label: str,
-        description: Optional[str] = None,
-        entry_data: Optional["RawMetadataValue"] = None,
-        value: Optional["RawMetadataValue"] = None,
+        value: "RawMetadataValue" = None,
     ):
-        if description is not None:
-            deprecation_warning(
-                'The "description" attribute on "MetadataEntry"',
-                "1.0.0",
-            )
-        value = cast(
-            RawMetadataValue,
-            canonicalize_backcompat_args(
-                new_val=value,
-                new_arg="value",
-                old_val=entry_data,
-                old_arg="entry_data",
-                breaking_version="1.0.0",
-            ),
-        )
         value = normalize_metadata_value(value)
 
         return super(MetadataEntry, cls).__new__(
             cls,
             check.str_param(label, "label"),
-            check.opt_str_param(description, "description"),
             check.inst_param(value, "value", MetadataValue),
         )
-
-    @property
-    def value(self):
-        """Alias of `entry_data`."""
-        return self.entry_data
 
 
 class PartitionMetadataEntry(

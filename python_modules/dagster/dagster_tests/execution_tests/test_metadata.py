@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -51,10 +52,7 @@ def solid_events_for_type(
 
 def test_metadata_entry_construction():
     entry_1 = MetadataEntry("foo", value=MetadataValue.text("bar"))
-    entry_2 = MetadataEntry("foo", entry_data=MetadataValue.text("bar"))
     assert entry_1.value == MetadataValue.text("bar")
-    assert entry_2.value == MetadataValue.text("bar")
-    assert entry_1 == entry_2
 
 
 def test_metadata_asset_materialization():
@@ -395,3 +393,25 @@ def test_bool_metadata_value():
     entry_map = {entry.label: entry.value.__class__ for entry in materialization.metadata_entries}
     assert entry_map["first_bool"] == BoolMetadataValue
     assert entry_map["second_bool"] == BoolMetadataValue
+
+
+def test_metadata_backcompat():
+    old_metadata_entry = json.dumps(
+        {
+            "__class__": "EventMetadataEntry",
+            "label": "foo",
+            "description": "bar",
+            "entry_data": {"__class__": "TextMetadataEntryData", "text": "baz"},
+        }
+    )
+
+    entry = deserialize_as(old_metadata_entry, MetadataEntry)
+    assert entry.label == "foo"
+    assert entry.value == TextMetadataValue("baz")
+
+    assert json.loads(serialize_dagster_namedtuple(entry)) == {
+        "__class__": "EventMetadataEntry",
+        "label": "foo",
+        "description": None,
+        "entry_data": {"__class__": "TextMetadataEntryData", "text": "baz"},
+    }
