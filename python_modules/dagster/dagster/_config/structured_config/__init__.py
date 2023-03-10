@@ -18,16 +18,17 @@ from typing_extensions import TypeAlias
 
 from dagster._annotations import experimental
 from dagster._config.config_type import Array, ConfigFloatInstance, ConfigType
-from dagster._config.field_utils import config_dictionary_from_values
+from dagster._config.field_utils import _ConfigHasFields, config_dictionary_from_values
 from dagster._config.post_process import resolve_defaults
 from dagster._config.source import BoolSource, IntSource, StringSource
 from dagster._config.structured_config.typing_utils import TypecheckAllowPartialResourceInitParams
+from dagster._config.type_printer import print_config_type_to_string
 from dagster._config.validate import process_config, validate_config
 from dagster._core.definitions.definition_config_schema import (
     ConfiguredDefinitionConfigSchema,
     DefinitionConfigSchema,
 )
-from dagster._core.errors import DagsterInvalidConfigError
+from dagster._core.errors import DagsterInvalidConfigError, DagsterInvalidDefinitionError
 from dagster._core.execution.context.init import InitResourceContext
 
 try:
@@ -145,6 +146,31 @@ class PermissiveConfig(Config):
     """
 
 
+def _recursively_apply_field_defaults(old_field: Field, additional_default_values: Any) -> Field:
+    if isinstance(old_field.config_type, _ConfigHasFields) and isinstance(
+        additional_default_values, dict
+    ):
+        updated_sub_fields = {
+            k: _recursively_apply_field_defaults(
+                sub_field, additional_default_values.get(k, FIELD_NO_DEFAULT_PROVIDED)
+            )
+            for k, sub_field in old_field.config_type.fields.items()
+        }
+        new_default = (
+            old_field.default_value if old_field.default_provided else FIELD_NO_DEFAULT_PROVIDED
+        )
+        if all(sub_field.default_provided for sub_field in updated_sub_fields.values()):
+            new_default = additional_default_values
+        return Field(
+            config=old_field.config_type.__class__(fields=updated_sub_fields),
+            default_value=new_default,
+            is_required=new_default == FIELD_NO_DEFAULT_PROVIDED and old_field.is_required,
+            description=old_field.description,
+        )
+    else:
+        return copy_with_default(old_field, additional_default_values)
+
+
 # This is from https://github.com/dagster-io/dagster/pull/11470
 def _apply_defaults_to_schema_field(field: Field, additional_default_values: Any) -> Field:
     # This work by validating the top-level config and then
@@ -152,37 +178,23 @@ def _apply_defaults_to_schema_field(field: Field, additional_default_values: Any
     # can actually take nested values so we only need to set it
     # at a single level
 
-    evr = validate_config(field.config_type, additional_default_values)
+    # evr = validate_config(field.config_type, additional_default_values)
 
-    if not evr.success:
-        raise DagsterInvalidConfigError(
-            "Incorrect values passed to .configured",
-            evr.errors,
-            additional_default_values,
-        )
+    # if not evr.success:
+    #     raise DagsterInvalidConfigError(
+    #         "Incorrect values passed to .configured",
+    #         evr.errors,
+    #         additional_default_values,
+    #     )
 
-    if field.default_provided:
-        # In the case where there is already a default config value
-        # we can apply "additional" defaults by actually invoking
-        # the config machinery. Meaning we pass the new_additional_default_values
-        # and then resolve the existing defaults over them. This preserves the default
-        # values that are not specified in new_additional_default_values and then
-        # applies the new value as the default value of the field in question.
-        defaults_processed_evr = resolve_defaults(field.config_type, additional_default_values)
-        check.invariant(
-            defaults_processed_evr.success, "Since validation passed, this should always work."
-        )
-        default_to_pass = defaults_processed_evr.value
-        return copy_with_default(field, default_to_pass)
-    else:
-        return copy_with_default(field, additional_default_values)
+    return _recursively_apply_field_defaults(field, additional_default_values)
 
 
 def copy_with_default(old_field: Field, new_config_value: Any) -> Field:
     return Field(
         config=old_field.config_type,
         default_value=new_config_value,
-        is_required=False,
+        is_required=new_config_value == FIELD_NO_DEFAULT_PROVIDED and old_field.is_required,
         description=old_field.description,
     )
 
@@ -440,6 +452,14 @@ class ConfigurableResource(
         """
         return PartialResource(cls, data=kwargs)
 
+    @classmethod
+    def partial(cls: "Type[Self]", **kwargs) -> "PartialResource[Self]":
+        """
+        Returns a partially initialized copy of the resource, with remaining config fields
+        set at runtime.
+        """
+        return PartialResource(cls, data=kwargs, is_partial=True)
+
     def _with_updated_values(self, values: Mapping[str, Any]) -> "ConfigurableResource[TResValue]":
         """
         Returns a new instance of the resource with the given values.
@@ -544,8 +564,19 @@ class PartialResource(
     data: Dict[str, Any]
     resource_cls: Type[ConfigurableResource[TResValue]]
 
-    def __init__(self, resource_cls: Type[ConfigurableResource[TResValue]], data: Dict[str, Any]):
+    def __init__(
+        self,
+        resource_cls: Type[ConfigurableResource[TResValue]],
+        data: Dict[str, Any],
+        is_partial: bool = False,
+    ):
         resource_pointers, data_without_resources = separate_resource_params(data)
+
+        if not is_partial and data_without_resources:
+            raise DagsterInvalidDefinitionError(
+                f"Resource {resource_cls.__name__} is not marked as partial, but was passed "
+                f"non-resource parameters: {list(data_without_resources.keys())}."
+            )
 
         MakeConfigCacheable.__init__(self, data=data, resource_cls=resource_cls)  # type: ignore  # extends BaseModel, takes kwargs
 
@@ -559,14 +590,17 @@ class PartialResource(
             resource_cls, fields_to_omit=set(resource_pointers.keys())
         )
 
+        resolved_config_dict = config_dictionary_from_values(data_without_resources, schema)
+        curried_schema = _curry_config_schema(schema, resolved_config_dict)
+
         def resource_fn(context: InitResourceContext):
-            instantiated = resource_cls(**context.resource_config, **data)
+            instantiated = resource_cls(**context.resource_config, **(resource_pointers))
             return instantiated.initialize_and_run(context)
 
         ResourceDefinition.__init__(
             self,
             resource_fn=resource_fn,
-            config_schema=schema,
+            config_schema=curried_schema,
             description=resource_cls.__doc__,
         )
 

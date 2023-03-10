@@ -1330,3 +1330,85 @@ def test_extending_resource_nesting() -> None:
     )
 
     assert executed["yes"]
+
+
+def test_structured_resource_partial_config() -> None:
+    out_txt = []
+
+    class WriterResource(ConfigurableResource):
+        prefix: str
+        postfix: str
+
+        def output(self, text: str) -> None:
+            out_txt.append(f"{self.prefix}{text}{self.postfix}")
+
+    @asset
+    def hello_world_asset(writer: WriterResource):
+        writer.output("hello, world!")
+
+    # No params set with partial
+    defs = Definitions(
+        assets=[hello_world_asset],
+        resources={"writer": WriterResource.partial()},
+    )
+
+    assert (
+        defs.get_implicit_global_asset_job_def()
+        .execute_in_process({"resources": {"writer": {"config": {"prefix": ">", "postfix": "<"}}}})
+        .success
+    )
+    assert out_txt == [">hello, world!<"]
+
+    out_txt.clear()
+
+    # One param set as partial
+    defs = Definitions(
+        assets=[hello_world_asset],
+        resources={"writer": WriterResource.partial(prefix="(")},
+    )
+
+    assert (
+        defs.get_implicit_global_asset_job_def()
+        .execute_in_process({"resources": {"writer": {"config": {"postfix": ")"}}}})
+        .success
+    )
+    assert out_txt == ["(hello, world!)"]
+    out_txt.clear()
+
+    # Two params set as partial
+    defs = Definitions(
+        assets=[hello_world_asset],
+        resources={"writer": WriterResource.partial(prefix="{", postfix="}")},
+    )
+
+    assert defs.get_implicit_global_asset_job_def().execute_in_process().success
+    assert out_txt == ["{hello, world!}"]
+    out_txt.clear()
+
+    # Overriding partial param
+    defs = Definitions(
+        assets=[hello_world_asset],
+        resources={"writer": WriterResource.partial(prefix="{")},
+    )
+
+    assert (
+        defs.get_implicit_global_asset_job_def()
+        .execute_in_process({"resources": {"writer": {"config": {"prefix": "[", "postfix": "]"}}}})
+        .success
+    )
+    assert out_txt == ["[hello, world!]"]
+    out_txt.clear()
+
+    # Overriding both partial params
+    defs = Definitions(
+        assets=[hello_world_asset],
+        resources={"writer": WriterResource.partial(prefix="<", postfix=">")},
+    )
+
+    assert (
+        defs.get_implicit_global_asset_job_def()
+        .execute_in_process({"resources": {"writer": {"config": {"prefix": "*", "postfix": "*"}}}})
+        .success
+    )
+    assert out_txt == ["*hello, world!*"]
+    out_txt.clear()
