@@ -59,7 +59,7 @@ from .sensor_definition import (
     SensorEvaluationContext,
     SensorType,
     SkipReason,
-    context_param_name_if_present,
+    get_context_param_name,
     get_or_create_sensor_context_base,
     validate_and_get_resource_dict,
 )
@@ -136,7 +136,7 @@ class RunStatusSensorContext:
         dagster_event,
         instance,
         context=None,
-        resource_defs: Optional[Mapping[str, "ResourceDefinition"]] = None,
+        resources: Optional[Mapping[str, "ResourceDefinition"]] = None,
     ) -> None:
         from dagster._core.execution.build_resources import build_resources
 
@@ -150,11 +150,11 @@ class RunStatusSensorContext:
         self._logger: Optional[logging.Logger] = None
 
         if context:
-            resource_defs = {**context.resource_defs, **(resource_defs or {})}
+            resources = {**context.resources, **(resources or {})}
 
-        self._resource_defs = resource_defs
+        self._resource_defs = resources
 
-        self._resources_cm = build_resources(resource_defs or {})
+        self._resources_cm = build_resources(resources or {})
 
         self._resources = self._resources_cm.__enter__()
         self._resources_contain_cm = isinstance(self._resources, IContainsGenerator)
@@ -254,7 +254,7 @@ def build_run_status_sensor_context(
     dagster_instance: DagsterInstance,
     dagster_run: DagsterRun,
     context: Optional[SensorEvaluationContext] = None,
-    resource_defs: Optional[Mapping[str, "ResourceDefinition"]] = None,
+    resources: Optional[Mapping[str, "ResourceDefinition"]] = None,
 ) -> RunStatusSensorContext:
     """
     Builds run status sensor context from provided parameters.
@@ -292,7 +292,7 @@ def build_run_status_sensor_context(
         dagster_run=dagster_run,
         dagster_event=dagster_event,
         context=context,
-        resource_defs=resource_defs,
+        resources=resources,
     )
 
 
@@ -700,7 +700,7 @@ class RunStatusSensorDefinition(SensorDefinition):
                         lambda: f'Error occurred during the execution sensor "{name}".',
                     ):
                         # one user code invocation maps to one failure event
-                        context_param_name = context_param_name_if_present(run_status_sensor_fn)
+                        context_param_name = get_context_param_name(run_status_sensor_fn)
                         contest_param = (
                             {context_param_name: sensor_context} if context_param_name else {}
                         )
@@ -759,7 +759,7 @@ class RunStatusSensorDefinition(SensorDefinition):
         )
 
     def __call__(self, *args, **kwargs) -> RawSensorEvaluationFunctionReturn:
-        context_param_name = context_param_name_if_present(self._run_status_sensor_fn)
+        context_param_name = get_context_param_name(self._run_status_sensor_fn)
         context = get_or_create_sensor_context_base(
             self._run_status_sensor_fn, *args, context_type=RunStatusSensorContext, **kwargs
         )

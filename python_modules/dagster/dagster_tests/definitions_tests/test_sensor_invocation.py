@@ -198,7 +198,7 @@ def test_multi_asset_sensor_invocation_resources() -> None:
             monitored_assets=[AssetKey("asset_a"), AssetKey("asset_b")],
             instance=instance,
             repository_def=my_repo,
-            resource_defs={"my_resource": MyResource(a_str="bar")},
+            resources={"my_resource": MyResource(a_str="bar")},
         )
         assert cast(RunRequest, a_and_b_sensor(ctx)).run_config == {"foo": "bar"}
 
@@ -260,7 +260,7 @@ def test_run_status_sensor_invocation_resources() -> None:
         dagster_instance=instance,
         dagster_run=dagster_run,
         dagster_event=dagster_event,
-        resource_defs={"my_resource": MyResource(a_str="bar")},
+        resources={"my_resource": MyResource(a_str="bar")},
     )
 
     status_sensor(context)
@@ -272,7 +272,7 @@ def test_run_status_sensor_invocation_resources() -> None:
         dagster_instance=instance,
         dagster_run=dagster_run,
         dagster_event=dagster_event,
-        context=build_sensor_context(resource_defs={"my_resource": MyResource(a_str="bar")}),
+        context=build_sensor_context(resources={"my_resource": MyResource(a_str="bar")}),
     )
 
     status_sensor(context)

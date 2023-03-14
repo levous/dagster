@@ -31,7 +31,7 @@ from .sensor_definition import (
     SensorEvaluationContext,
     SensorType,
     SkipReason,
-    context_param_name_if_present,
+    get_context_param_name,
     get_or_create_sensor_context_base,
     validate_and_get_resource_dict,
 )
@@ -276,7 +276,7 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
                 resource_args_populated = validate_and_get_resource_dict(
                     context.resources, name, resource_arg_names
                 )
-                context_param_name = context_param_name_if_present(freshness_policy_sensor_fn)
+                context_param_name = get_context_param_name(freshness_policy_sensor_fn)
                 freshness_context = FreshnessPolicySensorContext(
                     sensor_name=name,
                     asset_key=asset_key,
@@ -318,7 +318,7 @@ class FreshnessPolicySensorDefinition(SensorDefinition):
         )
 
     def __call__(self, *args, **kwargs) -> None:
-        context_param_name = context_param_name_if_present(self._freshness_policy_sensor_fn)
+        context_param_name = get_context_param_name(self._freshness_policy_sensor_fn)
 
         sensor_context = get_or_create_sensor_context_base(
             self._freshness_policy_sensor_fn,

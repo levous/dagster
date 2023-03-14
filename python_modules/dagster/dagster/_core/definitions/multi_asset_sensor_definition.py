@@ -40,7 +40,7 @@ from .sensor_definition import (
     SensorDefinition,
     SensorEvaluationContext,
     SensorType,
-    context_param_name_if_present,
+    get_context_param_name,
     get_or_create_sensor_context_base,
     validate_and_get_resource_dict,
 )
@@ -218,7 +218,7 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
         repository_def: "RepositoryDefinition",
         monitored_assets: Union[Sequence[AssetKey], AssetSelection],
         instance: Optional[DagsterInstance] = None,
-        resource_defs: Optional[Mapping[str, ResourceDefinition]] = None,
+        resources: Optional[Mapping[str, ResourceDefinition]] = None,
     ):
         from dagster._core.storage.event_log.base import EventLogRecord
 
@@ -266,7 +266,7 @@ class MultiAssetSensorEvaluationContext(SensorEvaluationContext):
             repository_name=repository_name,
             instance=instance,
             repository_def=repository_def,
-            resource_defs=resource_defs,
+            resources=resources,
         )
 
     def _cache_initial_unconsumed_events(self) -> None:
@@ -940,7 +940,7 @@ def build_multi_asset_sensor_context(
     cursor: Optional[str] = None,
     repository_name: Optional[str] = None,
     cursor_from_latest_materializations: bool = False,
-    resource_defs: Optional[Mapping[str, ResourceDefinition]] = None,
+    resources: Optional[Mapping[str, ResourceDefinition]] = None,
 ) -> MultiAssetSensorEvaluationContext:
     """Builds multi asset sensor execution context for testing purposes using the provided parameters.
 
@@ -959,7 +959,7 @@ def build_multi_asset_sensor_context(
         repository_name (Optional[str]): The name of the repository that the sensor belongs to.
         cursor_from_latest_materializations (bool): If True, the cursor will be set to the latest
             materialization for each monitored asset. By default, set to False.
-        resource_defs (Optional[Mapping[str, ResourceDefinition]]): The resource definitions
+        resources (Optional[Mapping[str, ResourceDefinition]]): The resource definitions
             to provide to the sensor.
 
     Examples:
@@ -1023,7 +1023,7 @@ def build_multi_asset_sensor_context(
         instance=instance,
         monitored_assets=monitored_assets,
         repository_def=repository_def,
-        resource_defs=resource_defs,
+        resources=resources,
     )
 
 
@@ -1106,14 +1106,14 @@ class MultiAssetSensorDefinition(SensorDefinition):
                     repository_def=context.repository_def,
                     monitored_assets=monitored_assets,
                     instance=context.instance,
-                    resource_defs=context.resource_defs,
+                    resources=context.resources,
                 )
                 resource_args_populated = validate_and_get_resource_dict(
                     context.resources, name, resource_arg_names
                 )
 
                 with multi_asset_sensor_context:
-                    context_param_name = context_param_name_if_present(materialization_fn)
+                    context_param_name = get_context_param_name(materialization_fn)
                     context_param = (
                         {context_param_name: multi_asset_sensor_context}
                         if context_param_name
@@ -1176,7 +1176,7 @@ class MultiAssetSensorDefinition(SensorDefinition):
         )
 
     def __call__(self, *args, **kwargs) -> AssetMaterializationFunctionReturn:
-        context_param_name = context_param_name_if_present(self._raw_asset_materialization_fn)
+        context_param_name = get_context_param_name(self._raw_asset_materialization_fn)
         context = get_or_create_sensor_context_base(
             self._raw_asset_materialization_fn,
             *args,
