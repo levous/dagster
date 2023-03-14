@@ -701,12 +701,12 @@ class RunStatusSensorDefinition(SensorDefinition):
                     ):
                         # one user code invocation maps to one failure event
                         context_param_name = get_context_param_name(run_status_sensor_fn)
-                        contest_param = (
+                        context_param = (
                             {context_param_name: sensor_context} if context_param_name else {}
                         )
 
                         sensor_return = run_status_sensor_fn(
-                            **contest_param,
+                            **context_param,
                             **resource_args_populated,
                         )
 
