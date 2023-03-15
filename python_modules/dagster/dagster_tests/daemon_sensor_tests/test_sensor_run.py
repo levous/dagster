@@ -39,7 +39,12 @@ from dagster._core.definitions.decorators.sensor_decorator import asset_sensor, 
 from dagster._core.definitions.instigation_logger import get_instigation_log_records
 from dagster._core.definitions.run_request import InstigatorType
 from dagster._core.definitions.run_status_sensor_definition import run_status_sensor
-from dagster._core.definitions.sensor_definition import DefaultSensorStatus, RunRequest, SkipReason
+from dagster._core.definitions.sensor_definition import (
+    DefaultSensorStatus,
+    RunRequest,
+    SensorTickResult,
+    SkipReason,
+)
 from dagster._core.events import DagsterEventType
 from dagster._core.execution.api import execute_pipeline
 from dagster._core.host_representation import ExternalInstigatorOrigin, ExternalRepositoryOrigin
@@ -826,7 +831,8 @@ def validate_tick(
     assert tick_data.instigator_name == external_sensor.name
     assert tick_data.instigator_type == InstigatorType.SENSOR
     assert tick_data.status == expected_status
-    assert tick_data.timestamp == expected_datetime.timestamp()
+    if expected_datetime is not None:
+        assert tick_data.timestamp == expected_datetime.timestamp()
     if expected_run_ids is not None:
         assert set(tick_data.run_ids) == set(expected_run_ids)
     if expected_error:

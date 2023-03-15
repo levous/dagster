@@ -26,7 +26,10 @@ from typing_extensions import Self, TypeAlias
 
 import dagster._check as check
 import dagster._seven as seven
-from dagster._core.definitions.run_request import InstigatorType, RunRequest
+from dagster._core.definitions.run_request import (
+    InstigatorType,
+    RunRequest,
+)
 from dagster._core.definitions.selector import PipelineSelector
 from dagster._core.definitions.sensor_definition import DefaultSensorStatus, SensorExecutionData
 from dagster._core.definitions.utils import validate_tags
@@ -611,7 +614,7 @@ def _evaluate_sensor(
                     # log to the original pipeline run
                     message = (
                         f'Sensor "{external_sensor.name}" acted on run status '
-                        f"{status} of run {origin_run_id}."
+                        f'{status} of run {origin_run_id}.'
                     )
                     instance.report_engine_event(
                         message=message, pipeline_run=pipeline_run_reaction.pipeline_run
