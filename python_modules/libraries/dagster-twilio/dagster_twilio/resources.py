@@ -20,4 +20,4 @@ class TwilioResource(ConfigurableResource[Client]):
     description="This resource is for connecting to Twilio",
 )
 def twilio_resource(context: InitResourceContext) -> Client:
-    return TwilioResource(**context.resource_config)(context=context)
+    return TwilioResource(**context.resource_config).resource_fn(context=context)  # type: ignore
