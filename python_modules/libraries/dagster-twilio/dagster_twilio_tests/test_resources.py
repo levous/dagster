@@ -4,12 +4,16 @@ import pytest
 from dagster import op
 from dagster._legacy import ModeDefinition, execute_solid
 from dagster_twilio import twilio_resource
+from dagster_twilio.resources import TwilioResource
 from twilio.base.exceptions import TwilioRestException
 
 
 def test_twilio_resource() -> None:
     account_sid = os.environ.get("TWILIO_TEST_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_TEST_AUTH_TOKEN")
+
+    assert account_sid, "TWILIO_TEST_ACCOUNT_SID not set"
+    assert auth_token, "TWILIO_TEST_AUTH_TOKEN not set"
 
     @op(required_resource_keys={"twilio"})
     def twilio_op(context):
@@ -36,5 +40,13 @@ def test_twilio_resource() -> None:
             }
         },
         mode_def=ModeDefinition(resource_defs={"twilio": twilio_resource}),
+    )
+    assert result.success
+
+    result = execute_solid(
+        twilio_op,
+        mode_def=ModeDefinition(
+            resource_defs={"twilio": TwilioResource(account_sid=account_sid, auth_token=auth_token)}
+        ),
     )
     assert result.success
