@@ -7,12 +7,12 @@ from dagster_twilio import twilio_resource
 from twilio.base.exceptions import TwilioRestException
 
 
-def test_twilio_resource():
+def test_twilio_resource() -> None:
     account_sid = os.environ.get("TWILIO_TEST_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_TEST_AUTH_TOKEN")
 
     @op(required_resource_keys={"twilio"})
-    def twilio_solid(context):
+    def twilio_op(context):
         assert context.resources.twilio
 
         # These tests are against the live SMS APIs using test creds/numbers; see
@@ -29,7 +29,7 @@ def test_twilio_resource():
         assert "The 'To' number +15005550001 is not a valid phone number" in str(exc_info.value)
 
     result = execute_solid(
-        twilio_solid,
+        twilio_op,
         run_config={
             "resources": {
                 "twilio": {"config": {"account_sid": account_sid, "auth_token": auth_token}}
