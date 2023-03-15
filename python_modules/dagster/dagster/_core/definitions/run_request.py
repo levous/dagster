@@ -164,6 +164,41 @@ class PipelineRunReaction(
         )
 
 
+@whitelist_for_serdes
+class DynamicPartitionsAction(str, Enum):
+    ADD = "ADD"
+    DELETE = "DELETE"
+
+
+@whitelist_for_serdes
+class DynamicPartitionsRequest(
+    NamedTuple(
+        "_DynamicPartitionsRequest",
+        [
+            ("partitions_def_name", str),
+            ("partition_keys", Sequence[str]),
+            ("action", DynamicPartitionsAction),
+        ],
+    )
+):
+    """
+    A request to add or delete partitions from a dynamic partitions definition, to be evaluated by a sensor.
+    """
+
+    def __new__(
+        cls,
+        partitions_def_name: str,
+        partition_keys: Sequence[str],
+        action: DynamicPartitionsAction,
+    ):
+        return super(DynamicPartitionsRequest, cls).__new__(
+            cls,
+            partitions_def_name=check.str_param(partitions_def_name, "partitions_def_name"),
+            partition_keys=check.list_param(partition_keys, "partition_keys", of_type=str),
+            action=check.inst_param(action, "action", DynamicPartitionsAction),
+        )
+
+
 class SensorTickResult(
     NamedTuple(
         "_SensorTickResult",
@@ -172,6 +207,7 @@ class SensorTickResult(
             ("skip_reason", Optional[SkipReason]),
             ("pipeline_run_reaction", Optional[PipelineRunReaction]),
             ("cursor", Optional[str]),
+            ("dynamic_partitions_requests", Optional[Sequence[DynamicPartitionsRequest]]),
         ],
     )
 ):
@@ -182,6 +218,10 @@ class SensorTickResult(
             of run requests to be executed.
         cursor (Optional[str]): The cursor value for this sensor, which will be provided on the
             context for the next sensor evaluation.
+        dynamic_partitions_requests (Optional[Sequence[DynamicPartitionsRequests]]): A list of
+            dynamic partition requests to request dynamic partition addition and deletion. Run requests
+            will be evaluated using the state of the partitions with these changes applied.
+        dynamic_partitions_requests: Optional[Sequence[DynamicPartitionsRequest]] = None,
     """
 
     def __new__(
@@ -190,6 +230,7 @@ class SensorTickResult(
         skip_reason: Optional[SkipReason] = None,
         pipeline_run_reaction: Optional[PipelineRunReaction] = None,
         cursor: Optional[str] = None,
+        dynamic_partitions_requests: Optional[Sequence[DynamicPartitionsRequest]] = None,
     ):
         if skip_reason:
             if len(run_requests if run_requests else []) > 0:
@@ -215,6 +256,11 @@ class SensorTickResult(
                 pipeline_run_reaction, "pipeline_run_reaction", PipelineRunReaction
             ),
             cursor=check.opt_str_param(cursor, "cursor"),
+            dynamic_partitions_requests=check.opt_sequence_param(
+                dynamic_partitions_requests,
+                "dynamic_partitions_requests",
+                DynamicPartitionsRequest,
+            ),
         )
 
     @property

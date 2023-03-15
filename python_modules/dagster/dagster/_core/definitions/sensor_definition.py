@@ -47,6 +47,8 @@ from .graph_definition import GraphDefinition
 from .mode import DEFAULT_MODE_NAME
 from .pipeline_definition import PipelineDefinition
 from .run_request import (
+    DynamicPartitionsAction,
+    DynamicPartitionsRequest,
     PendingPartitionedRunRequest,
     PipelineRunReaction,
     RunRequest,
@@ -368,6 +370,58 @@ def get_or_create_sensor_context(
     return context or build_sensor_context()
 
 
+def _check_dynamic_partitions_and_pending_dynamic_partitioned_requests(
+    instance: DagsterInstance,
+    dynamic_partitions_requests: Sequence[DynamicPartitionsRequest],
+    pending_dynamic_partitioned_requests: Sequence[PendingPartitionedRunRequest],
+) -> None:
+    for req in dynamic_partitions_requests:
+        if not (
+            req.action is DynamicPartitionsAction.DELETE
+            or req.action is DynamicPartitionsAction.ADD
+        ):
+            raise DagsterInvariantViolationError(
+                f"Dynamic partitions requests must be either add or delete requests, but got {req}."
+            )
+
+    delete_reqs = [
+        req for req in dynamic_partitions_requests if req.action == DynamicPartitionsAction.DELETE
+    ]
+    partitions_to_delete = set()
+    for req in delete_reqs:
+        for partition in req.partition_keys:
+            partitions_to_delete.add(partition)
+
+    add_reqs = [
+        req for req in dynamic_partitions_requests if req.action == DynamicPartitionsAction.ADD
+    ]
+    partitions_to_add = set()
+    for req in add_reqs:
+        for partition in req.partition_keys:
+            partitions_to_add.add(partition)
+
+    if partitions_to_delete.intersection(partitions_to_add):
+        raise DagsterInvariantViolationError(
+            "Dynamic partition requests cannot contain both add and delete requests for the same"
+            " partition keys."
+        )
+
+    for pending_run_request in pending_dynamic_partitioned_requests:
+        has_partition = instance.has_dynamic_partition(
+            partitions_def_name=pending_run_request.partitions_def_name,
+            partition_key=pending_run_request.partition_key,
+        )
+        if (
+            has_partition and pending_run_request.partition_key in partitions_to_delete
+        ) or pending_run_request.partition_key not in partitions_to_add:
+            raise DagsterInvariantViolationError(
+                "Cannot create run request for partition"
+                f" {pending_run_request.partition_key} because it does not exist."
+                " You may need to add a DynamicPartitionsRequest to the returned"
+                " SensorTickResult."
+            )
+
+
 class SensorDefinition:
     """Define a sensor that initiates a set of runs based on some external state.
 
@@ -568,6 +622,7 @@ class SensorDefinition:
         skip_message: Optional[str] = None
         run_requests: List[RunRequest] = []
         pipeline_run_reactions: List[PipelineRunReaction] = []
+        dynamic_partitions_requests: Optional[Sequence[DynamicPartitionsRequest]] = None
         updated_cursor = context.cursor
 
         if not result or result == [None]:
@@ -577,6 +632,13 @@ class SensorDefinition:
             check.inst(item, (SkipReason, RunRequest, PipelineRunReaction, SensorTickResult))
 
             if isinstance(item, SensorTickResult):
+                _check_dynamic_partitions_and_pending_dynamic_partitioned_requests(
+                    context.instance,
+                    item.dynamic_partitions_requests or [],
+                    item.pending_partitioned_run_requests,
+                )
+                dynamic_partitions_requests = item.dynamic_partitions_requests
+
                 for unresolved_run_request in item.run_requests or []:
                     if isinstance(unresolved_run_request, PendingPartitionedRunRequest):
                         run_requests.append(unresolved_run_request.run_request)
@@ -649,6 +711,7 @@ class SensorDefinition:
             updated_cursor,
             pipeline_run_reactions,
             captured_log_key=context.log_key if context.has_captured_logs() else None,
+            dynamic_partitions_requests=dynamic_partitions_requests,
         )
 
     def has_loadable_targets(self) -> bool:
@@ -724,6 +787,7 @@ class SensorExecutionData(
             ("cursor", Optional[str]),
             ("pipeline_run_reactions", Optional[Sequence[PipelineRunReaction]]),
             ("captured_log_key", Optional[Sequence[str]]),
+            ("dynamic_partitions_requests", Optional[Sequence[DynamicPartitionsRequest]]),
         ],
     )
 ):
@@ -734,6 +798,7 @@ class SensorExecutionData(
         cursor: Optional[str] = None,
         pipeline_run_reactions: Optional[Sequence[PipelineRunReaction]] = None,
         captured_log_key: Optional[Sequence[str]] = None,
+        dynamic_partitions_requests: Optional[Sequence[DynamicPartitionsRequest]] = None,
     ):
         check.opt_sequence_param(run_requests, "run_requests", RunRequest)
         check.opt_str_param(skip_message, "skip_message")
@@ -742,6 +807,9 @@ class SensorExecutionData(
             pipeline_run_reactions, "pipeline_run_reactions", PipelineRunReaction
         )
         check.opt_list_param(captured_log_key, "captured_log_key", str)
+        check.opt_sequence_param(
+            dynamic_partitions_requests, "dynamic_partitions_requests", DynamicPartitionsRequest
+        )
         check.invariant(
             not (run_requests and skip_message), "Found both skip data and run request data"
         )
@@ -752,6 +820,7 @@ class SensorExecutionData(
             cursor=cursor,
             pipeline_run_reactions=pipeline_run_reactions,
             captured_log_key=captured_log_key,
+            dynamic_partitions_requests=dynamic_partitions_requests,
         )
 
 
