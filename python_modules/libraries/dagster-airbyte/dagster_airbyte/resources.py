@@ -37,7 +37,6 @@ class AirbyteState:
     INCOMPLETE = "incomplete"
 
 
-@quiet_experimental
 class BaseAirbyteResource(ConfigurableResource):
     request_max_retries: int = PyField(
         3,
@@ -64,6 +63,10 @@ class BaseAirbyteResource(ConfigurableResource):
         ),
     )
 
+    @quiet_experimental
+    def __init__(*args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
     @property
     @cached_method
     def _log(self) -> logging.Logger:
@@ -82,8 +85,7 @@ class BaseAirbyteResource(ConfigurableResource):
     def make_request(
         self, endpoint: str, data: Optional[Mapping[str, object]] = None, method: str = "POST"
     ) -> Optional[Mapping[str, object]]:
-        """
-        Creates and sends a request to the desired Airbyte REST API endpoint.
+        """Creates and sends a request to the desired Airbyte REST API endpoint.
 
         Args:
             endpoint (str): The Airbyte API endpoint to send this request to.
@@ -155,8 +157,7 @@ class BaseAirbyteResource(ConfigurableResource):
         poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
         poll_timeout: Optional[float] = None,
     ) -> AirbyteOutput:
-        """
-        Initializes a sync operation for the given connector, and polls until it completes.
+        """Initializes a sync operation for the given connector, and polls until it completes.
 
         Args:
             connection_id (str): The Airbyte Connector ID. You can retrieve this value from the
@@ -271,8 +272,7 @@ class AirbyteCloudResource(BaseAirbyteResource):
 
 
 class AirbyteResource(BaseAirbyteResource):
-    """
-    This class exposes methods on top of the Airbyte REST API.
+    """This class exposes methods on top of the Airbyte REST API.
     """
 
     host: str = PyField(..., description="The Airbyte server address.")
@@ -628,8 +628,7 @@ def airbyte_resource(context) -> AirbyteResource:
 
 @resource(config_schema=infer_schema_from_config_class(AirbyteCloudResource))
 def airbyte_cloud_resource(context) -> AirbyteCloudResource:
-    """
-    This resource allows users to programatically interface with the Airbyte Cloud REST API to launch
+    """This resource allows users to programatically interface with the Airbyte Cloud REST API to launch
     syncs and monitor their progress. Currently, this resource may only be used with the more basic
     `dagster-airbyte` APIs, including the ops and assets.
     """
