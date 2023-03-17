@@ -111,6 +111,7 @@ class UnresolvedAssetJobDefinition(
         instance: Optional[DagsterInstance] = None,
         current_time: Optional[datetime] = None,
     ) -> RunRequest:
+        # TODO deprecate this function?
         """Creates a RunRequest object for a run that processes the given partition.
 
         Args:
@@ -162,6 +163,7 @@ class UnresolvedAssetJobDefinition(
             else partition_set.run_config_for_partition(partition),
             tags=run_request_tags,
             asset_selection=asset_selection,
+            partition_key=partition_key,
         )
 
     def resolve(

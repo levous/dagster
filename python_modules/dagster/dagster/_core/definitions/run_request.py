@@ -1,13 +1,18 @@
+from datetime import datetime
 from enum import Enum
-from typing import Any, Mapping, NamedTuple, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, NamedTuple, Optional, Sequence
 
 import dagster._check as check
 from dagster._annotations import PublicAttr
 from dagster._core.definitions.events import AssetKey
+from dagster._core.instance import DynamicPartitionsStore
 from dagster._core.storage.pipeline_run import DagsterRun, DagsterRunStatus
 from dagster._core.storage.tags import PARTITION_NAME_TAG
 from dagster._serdes.serdes import whitelist_for_serdes
 from dagster._utils.error import SerializableErrorInfo
+
+if TYPE_CHECKING:
+    from dagster._core.definitions.partition import PartitionSetDefinition
 
 
 @whitelist_for_serdes(old_storage_names={"JobType"})
@@ -44,22 +49,21 @@ class RunRequest(
             ("job_name", PublicAttr[Optional[str]]),
             ("asset_selection", PublicAttr[Optional[Sequence[AssetKey]]]),
             ("stale_assets_only", PublicAttr[bool]),
+            ("partition_key", PublicAttr[Optional[str]]),
         ],
     )
 ):
     """Represents all the information required to launch a single run.  Must be returned by a
     SensorDefinition or ScheduleDefinition's evaluation function for a run to be launched.
 
-    To build a run request for a particular partitition, use
-    :py:func:`~JobDefinition.run_request_for_partition`.
-
     Attributes:
         run_key (Optional[str]): A string key to identify this launched run. For sensors, ensures that
             only one run is created per run key across all sensor evaluations.  For schedules,
             ensures that one run is created per tick, across failure recoveries. Passing in a `None`
             value means that a run will always be launched per evaluation.
-        run_config (Optional[Dict]): The config that parameterizes the run execution to
-            be launched, as a dict.
+        run_config (Optional[Mapping[str, Any]]: Configuration for the run. If the job has
+            a :py:class:`PartitionedConfig`, this value will override replace the config
+            provided by it.
         tags (Optional[Dict[str, str]]): A dictionary of tags (string key-value pairs) to attach
             to the launched run.
         job_name (Optional[str]): (Experimental) The name of the job this run request will launch.
@@ -69,6 +73,7 @@ class RunRequest(
         stale_assets_only (Optional[Sequence[AssetKey]]): Set to true to further narrow the asset
             selection to stale assets. If passed without an asset selection, all stale assets in the
             job will be materialized. If the job does not materialize assets, this flag is ignored.
+        partition_key (Optional[str]): The partition key for this run request.
     """
 
     def __new__(
@@ -79,6 +84,7 @@ class RunRequest(
         job_name: Optional[str] = None,
         asset_selection: Optional[Sequence[AssetKey]] = None,
         stale_assets_only: bool = False,
+        partition_key: Optional[str] = None,
     ):
         return super(RunRequest, cls).__new__(
             cls,
@@ -90,11 +96,8 @@ class RunRequest(
                 asset_selection, "asset_selection", of_type=AssetKey
             ),
             stale_assets_only=check.bool_param(stale_assets_only, "stale_assets_only"),
+            partition_key=check.opt_str_param(partition_key, "partition_key"),
         )
-
-    @property
-    def partition_key(self) -> Optional[str]:
-        return self.tags.get(PARTITION_NAME_TAG)
 
     def with_replaced_attrs(self, **kwargs: Any) -> "RunRequest":
         fields = self._asdict()
@@ -102,6 +105,42 @@ class RunRequest(
             if k in kwargs:
                 fields[k] = kwargs[k]
         return RunRequest(**fields)
+
+    def with_resolved_partition(
+        self,
+        partition_set: "PartitionSetDefinition",
+        current_time: Optional[datetime] = None,
+        dynamic_partitions_store: Optional[DynamicPartitionsStore] = None,
+    ) -> "RunRequest":
+        if self.partition_key is None:
+            check.failed(
+                "Cannot resolve partition for run request without partition key",
+            )
+
+        # Relies on the partition set to throw an error if the partition does not exist
+        partition = partition_set.get_partition(
+            self.partition_key,
+            current_time=current_time,
+            dynamic_partitions_store=dynamic_partitions_store,
+        )
+
+        get_run_request_tags = lambda partition: (
+            {**self.tags, **partition_set.tags_for_partition(partition)}
+            if self.tags
+            else partition_set.tags_for_partition(partition)
+        )
+
+        return self.with_replaced_attrs(
+            run_config=self.run_config
+            if self.run_config
+            else partition_set.run_config_for_partition(partition),
+            tags=get_run_request_tags(partition),
+        )
+
+    def has_resolved_partition_run_request(self) -> bool:
+        # Backcompat run requests yielded via `run_request_for_partition` already have resolved
+        # partitioning
+        return self.tags.get(PARTITION_NAME_TAG) is not None if self.partition_key else True
 
 
 @whitelist_for_serdes
