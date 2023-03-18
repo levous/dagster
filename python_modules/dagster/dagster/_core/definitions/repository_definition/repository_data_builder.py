@@ -91,7 +91,7 @@ def build_caching_repository_data_from_list(
     default_logger_defs: Optional[Mapping[str, LoggerDefinition]] = None,
     top_level_resources: Optional[Mapping[str, ResourceDefinition]] = None,
 ) -> CachingRepositoryData:
-    from dagster._core.definitions import AssetGroup, AssetsDefinition
+    from dagster._core.definitions import AssetsDefinition
     from dagster._core.definitions.partitioned_schedule import (
         UnresolvedPartitionedAssetScheduleDefinition,
     )
@@ -109,7 +109,6 @@ def build_caching_repository_data_from_list(
     assets_defs: List[AssetsDefinition] = []
     asset_keys: Set[AssetKey] = set()
     source_assets: List[SourceAsset] = []
-    combined_asset_group = None
     for definition in repository_definitions:
         if isinstance(definition, PipelineDefinition):
             if (
@@ -182,11 +181,6 @@ def build_caching_repository_data_from_list(
                 )
             # we can only resolve these once we have all assets
             unresolved_jobs[definition.name] = definition
-        elif isinstance(definition, AssetGroup):
-            if combined_asset_group:
-                combined_asset_group += definition
-            else:
-                combined_asset_group = definition
         elif isinstance(definition, AssetsDefinition):
             for key in definition.keys:
                 if key in asset_keys:
@@ -200,40 +194,21 @@ def build_caching_repository_data_from_list(
             check.failed(f"Unexpected repository entry {definition}")
 
     if assets_defs or source_assets:
-        if combined_asset_group is not None:
-            raise DagsterInvalidDefinitionError(
-                "A repository can't have both an AssetGroup and direct asset defs"
-            )
-        combined_asset_group = AssetGroup(
+        for job_def in get_base_asset_jobs(
             assets=assets_defs,
             source_assets=source_assets,
             executor_def=default_executor_def,
-        )
-
-    if combined_asset_group:
-        for job_def in get_base_asset_jobs(
-            assets=combined_asset_group.assets,
-            source_assets=combined_asset_group.source_assets,
-            executor_def=combined_asset_group.executor_def,
-            resource_defs=combined_asset_group.resource_defs,
+            resource_defs={},  # ????
         ):
             pipelines_or_jobs[job_def.name] = job_def
 
-        source_assets_by_key = {
-            source_asset.key: source_asset for source_asset in combined_asset_group.source_assets
-        }
-        assets_defs_by_key = {
-            key: asset for asset in combined_asset_group.assets for key in asset.keys
-        }
+        source_assets_by_key = {source_asset.key: source_asset for source_asset in source_assets}
+        assets_defs_by_key = {key: asset for asset in assets_defs for key in asset.keys}
     else:
         source_assets_by_key = {}
         assets_defs_by_key = {}
 
-    asset_graph = AssetGraph.from_assets(
-        [*combined_asset_group.assets, *combined_asset_group.source_assets]
-        if combined_asset_group
-        else []
-    )
+    asset_graph = AssetGraph.from_assets([*assets_defs, *source_assets])
 
     # resolve all the UnresolvedAssetJobDefinitions and
     # UnresolvedPartitionedAssetScheduleDefinitions using the full set of assets

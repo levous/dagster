@@ -1,5 +1,4 @@
 from dagster import AssetsDefinition, graph, op
-from dagster._legacy import AssetGroup
 
 
 @op
@@ -18,5 +17,3 @@ def hello_world():
 
 
 graph_asset = AssetsDefinition.from_graph(hello_world, group_name="hello_world_group")
-
-graph_backed_group = AssetGroup([graph_asset])

@@ -30,7 +30,7 @@ from dagster import (
     with_resources,
 )
 from dagster._check import CheckError
-from dagster._core.definitions import AssetGroup, AssetIn, SourceAsset, asset, multi_asset
+from dagster._core.definitions import AssetIn, SourceAsset, asset, multi_asset
 from dagster._core.errors import DagsterInvalidDefinitionError, DagsterInvalidInvocationError
 from dagster._core.storage.mem_io_manager import InMemoryIOManager
 from dagster._core.test_utils import instance_for_test
@@ -391,7 +391,7 @@ def test_asset_with_io_manager_def():
     def the_asset():
         pass
 
-    result = AssetGroup([the_asset]).materialize()
+    result = materialize([the_asset])
     assert result.success
     assert events == ["entered for the_asset"]
 
@@ -415,7 +415,7 @@ def test_multiple_assets_io_manager_defs():
     def other_asset():
         return 6
 
-    AssetGroup([the_asset, other_asset]).materialize()
+    materialize([the_asset, other_asset])
 
     assert num_times[0] == 2
 
@@ -437,7 +437,7 @@ def test_asset_with_io_manager_key_only():
     def the_asset():
         return 5
 
-    AssetGroup([the_asset], resource_defs={"the_key": the_io_manager}).materialize()
+    materialize([the_asset], resources={"the_key": the_io_manager})
 
     assert list(io_manager_inst.values.values())[0] == 5
 

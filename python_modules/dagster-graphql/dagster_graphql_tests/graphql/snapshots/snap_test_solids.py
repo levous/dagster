@@ -338,6 +338,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'bar'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'bar'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'bar'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'foo_job'
                         },
                         'solidHandle': {
@@ -352,6 +376,30 @@ snapshots['test_query_all_solids 1'] = {
                     'name': 'baz'
                 },
                 'invocations': [
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'baz'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'baz'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'baz'
+                        }
+                    },
                     {
                         'pipeline': {
                             'name': 'foo_job'
@@ -472,6 +520,30 @@ snapshots['test_query_all_solids 1'] = {
                     'name': 'downstream_asset'
                 },
                 'invocations': [
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'downstream_asset'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'downstream_asset'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'downstream_asset'
+                        }
+                    },
                     {
                         'pipeline': {
                             'name': 'hanging_graph_asset_job'
@@ -746,6 +818,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'foo'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'foo'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'foo'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'foo_job'
                         },
                         'solidHandle': {
@@ -760,6 +856,30 @@ snapshots['test_query_all_solids 1'] = {
                     'name': 'foo_bar'
                 },
                 'invocations': [
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'foo_bar'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'foo_bar'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'foo_bar'
+                        }
+                    },
                     {
                         'pipeline': {
                             'name': 'foo_job'
@@ -970,6 +1090,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_1'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_1'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_1'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'named_groups_job'
                         },
                         'solidHandle': {
@@ -986,6 +1130,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_2'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_2'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_2'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'named_groups_job'
                         },
                         'solidHandle': {
@@ -1000,6 +1168,30 @@ snapshots['test_query_all_solids 1'] = {
                     'name': 'grouped_asset_4'
                 },
                 'invocations': [
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_4'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_4'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'grouped_asset_4'
+                        }
+                    },
                     {
                         'pipeline': {
                             'name': 'named_groups_job'
@@ -1034,6 +1226,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'hanging_graph_asset_job'
                         },
                         'solidHandle': {
@@ -1048,6 +1264,30 @@ snapshots['test_query_all_solids 1'] = {
                     'name': 'hanging_op'
                 },
                 'invocations': [
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.hanging_op'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.hanging_op'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.hanging_op'
+                        }
+                    },
                     {
                         'pipeline': {
                             'name': 'hanging_graph_asset_job'
@@ -1258,6 +1498,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.my_op'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.my_op'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.my_op'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'hanging_graph_asset_job'
                         },
                         'solidHandle': {
@@ -1312,6 +1576,30 @@ snapshots['test_query_all_solids 1'] = {
                     'name': 'never_runs_op'
                 },
                 'invocations': [
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.never_runs_op'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.never_runs_op'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'hanging_graph.never_runs_op'
+                        }
+                    },
                     {
                         'pipeline': {
                             'name': 'hanging_graph_asset_job'
@@ -2186,6 +2474,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'unconnected'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'unconnected'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'unconnected'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'foo_job'
                         },
                         'solidHandle': {
@@ -2202,6 +2514,30 @@ snapshots['test_query_all_solids 1'] = {
                 'invocations': [
                     {
                         'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'ungrouped_asset_3'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'ungrouped_asset_3'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'ungrouped_asset_3'
+                        }
+                    },
+                    {
+                        'pipeline': {
                             'name': 'named_groups_job'
                         },
                         'solidHandle': {
@@ -2216,6 +2552,30 @@ snapshots['test_query_all_solids 1'] = {
                     'name': 'ungrouped_asset_5'
                 },
                 'invocations': [
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_0'
+                        },
+                        'solidHandle': {
+                            'handleID': 'ungrouped_asset_5'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_1'
+                        },
+                        'solidHandle': {
+                            'handleID': 'ungrouped_asset_5'
+                        }
+                    },
+                    {
+                        'pipeline': {
+                            'name': '__ASSET_JOB_2'
+                        },
+                        'solidHandle': {
+                            'handleID': 'ungrouped_asset_5'
+                        }
+                    },
                     {
                         'pipeline': {
                             'name': 'named_groups_job'

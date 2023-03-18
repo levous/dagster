@@ -10,7 +10,7 @@ from dagster._core.definitions.source_asset import SourceAsset
 from dagster._core.definitions.unresolved_asset_job_definition import UnresolvedAssetJobDefinition
 
 if TYPE_CHECKING:
-    from dagster._core.definitions import AssetGroup, AssetsDefinition
+    from dagster._core.definitions import AssetsDefinition
     from dagster._core.definitions.partitioned_schedule import (
         UnresolvedPartitionedAssetScheduleDefinition,
     )
@@ -36,7 +36,6 @@ RepositoryLevelDefinition = TypeVar(
 
 RepositoryListDefinition = Union[
     "AssetsDefinition",
-    "AssetGroup",
     GraphDefinition,
     PartitionSetDefinition[object],
     PipelineDefinition,

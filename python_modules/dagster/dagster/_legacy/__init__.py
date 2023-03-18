@@ -1,5 +1,4 @@
 from dagster._core.definitions import (
-    AssetGroup as AssetGroup,
     DynamicOutputDefinition as DynamicOutputDefinition,
     InputDefinition as InputDefinition,
     Materialization as Materialization,

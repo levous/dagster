@@ -20,7 +20,7 @@ from dagster_test.toys.cross_repo_assets import (
 )
 from dagster_test.toys.dynamic import dynamic_job
 from dagster_test.toys.error_monster import error_monster_failing_job, error_monster_passing_job
-from dagster_test.toys.graph_backed_assets import graph_backed_group
+from dagster_test.toys.graph_backed_assets import graph_asset
 from dagster_test.toys.hammer import hammer_default_executor_job
 from dagster_test.toys.input_managers import df_stats_job
 from dagster_test.toys.log_asset import log_asset_job
@@ -98,7 +98,7 @@ def toys_repository():
             model_job,
             multi_inputs_outputs_job,
             hello_world_notebook_pipeline,
-            software_defined_assets,
+            *software_defined_assets,
             with_metadata,
             succeeds_job,
             return_run_request_succeeds_sensor,
@@ -155,7 +155,7 @@ def partitioned_assets_repository():
 
 @repository
 def long_asset_keys_repository():
-    return [long_asset_keys_group]
+    return [*long_asset_keys_group]
 
 
 @repository
@@ -165,22 +165,22 @@ def big_honkin_assets_repository():
 
 @repository
 def upstream_assets_repository():
-    return [upstream_asset_group]
+    return [*upstream_asset_group]
 
 
 @repository
 def downstream_assets_repository1():
-    return [downstream_asset_group1]
+    return [*downstream_asset_group1]
 
 
 @repository
 def downstream_assets_repository2():
-    return [downstream_asset_group2]
+    return [*downstream_asset_group2]
 
 
 @repository
 def graph_backed_asset_repository():
-    return [graph_backed_group]
+    return [graph_asset]
 
 
 @repository

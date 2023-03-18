@@ -82,6 +82,7 @@ from dagster._core.definitions.multi_dimensional_partitions import MultiPartitio
 from dagster._core.definitions.output import DynamicOut, Out
 from dagster._core.definitions.reconstruct import ReconstructableRepository
 from dagster._core.definitions.sensor_definition import RunRequest, SkipReason
+from dagster._core.execution.with_resources import with_resources
 from dagster._core.host_representation.external import ExternalRepository
 from dagster._core.log_manager import coerce_valid_log_level
 from dagster._core.storage.fs_io_manager import fs_io_manager
@@ -91,7 +92,6 @@ from dagster._core.test_utils import default_mode_def_for_test, today_at_midnigh
 from dagster._core.workspace.context import WorkspaceProcessContext, WorkspaceRequestContext
 from dagster._core.workspace.load_target import PythonFileTarget
 from dagster._legacy import (
-    AssetGroup,
     Materialization,
     ModeDefinition,
     PartitionSetDefinition,
@@ -1534,15 +1534,6 @@ def downstream_asset(hanging_graph):
     return 1
 
 
-hanging_graph_asset_job = AssetGroup(
-    [hanging_graph_asset, downstream_asset],
-    resource_defs={
-        "hanging_asset_resource": hanging_asset_resource,
-        "io_manager": IOManagerDefinition.hardcoded_io_manager(DummyIOManager()),
-    },
-).build_job("hanging_graph_asset_job")
-
-
 @asset
 def asset_one():
     return 1
@@ -1770,9 +1761,6 @@ def unconnected(context):
     assert context.pipeline_def.asset_selection_data is not None
 
 
-asset_group_job = AssetGroup([foo, bar, foo_bar, baz, unconnected]).build_job("foo_job")
-
-
 @asset(group_name="group_1")
 def grouped_asset_1():
     return 1
@@ -1889,19 +1877,6 @@ def dynamic_in_multipartitions_fail(context, dynamic_in_multipartitions_success)
     raise Exception("oops")
 
 
-# For now the only way to add assets to repositories is via AssetGroup
-# When AssetGroup is removed, these assets should be added directly to repository_with_named_groups
-named_groups_job = AssetGroup(
-    [
-        grouped_asset_1,
-        grouped_asset_2,
-        ungrouped_asset_3,
-        grouped_asset_4,
-        ungrouped_asset_5,
-    ]
-).build_job("named_groups_job")
-
-
 @repository
 def empty_repo():
     return []
@@ -1965,9 +1940,6 @@ def define_pipelines():
         fail_partition_materialization_job,
         observation_job,
         failure_assets_job,
-        asset_group_job,
-        hanging_graph_asset_job,
-        named_groups_job,
         memoization_job,
         req_config_job,
     ]
@@ -1975,6 +1947,35 @@ def define_pipelines():
 
 def define_asset_jobs():
     return [
+        foo,
+        bar,
+        foo_bar,
+        baz,
+        unconnected,
+        define_asset_job("foo_job", [foo, bar, foo_bar, baz, unconnected]),
+        *with_resources(
+            [hanging_graph_asset, downstream_asset],
+            resource_defs={
+                "hanging_asset_resource": hanging_asset_resource,
+                "io_manager": IOManagerDefinition.hardcoded_io_manager(DummyIOManager()),
+            },
+        ),
+        define_asset_job("hanging_graph_asset_job", [hanging_graph_asset, downstream_asset]),
+        grouped_asset_1,
+        grouped_asset_2,
+        ungrouped_asset_3,
+        grouped_asset_4,
+        ungrouped_asset_5,
+        define_asset_job(
+            "named_groups_job",
+            [
+                grouped_asset_1,
+                grouped_asset_2,
+                ungrouped_asset_3,
+                grouped_asset_4,
+                ungrouped_asset_5,
+            ],
+        ),
         untyped_asset,
         typed_asset,
         typed_multi_asset,
