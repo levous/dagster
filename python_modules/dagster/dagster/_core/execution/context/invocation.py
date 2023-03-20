@@ -312,8 +312,8 @@ class UnboundOpExecutionContext(OpExecutionContext):
     def get_mapping_key(self) -> Optional[str]:
         return self._mapping_key
 
-    def with_resources(self, resources_dict: Mapping[str, Any]) -> "UnboundOpExecutionContext":
-        """Add resources to the context.
+    def replace_resources(self, resources_dict: Mapping[str, Any]) -> "UnboundOpExecutionContext":
+        """Replace the resources of this context.
 
         This method is intended to be used by the Dagster framework, and should not be called by user code.
 
@@ -322,7 +322,7 @@ class UnboundOpExecutionContext(OpExecutionContext):
         """
         return UnboundOpExecutionContext(
             op_config=self._op_config,
-            resources_dict={**self._resource_defs, **resources_dict},
+            resources_dict=resources_dict,
             resources_config=self._resources_config,
             instance=self._instance,
             partition_key=self._partition_key,
