@@ -1803,7 +1803,7 @@ def test_direct_op_invocation() -> None:
     # Providing both context and resource is not ok, because we don't know which one to use
     with pytest.raises(
         DagsterInvalidInvocationError,
-        match="Provided in both context and kwargs: \\['my_resource'\\]",
+        match="Cannot provide resources in both context and kwargs",
     ):
         assert (
             my_op(
@@ -1846,7 +1846,7 @@ def test_direct_asset_invocation() -> None:
     # Providing both context and resource is not ok, because we don't know which one to use
     with pytest.raises(
         DagsterInvalidInvocationError,
-        match="Provided in both context and kwargs: \\['my_resource'\\]",
+        match="Cannot provide resources in both context and kwargs",
     ):
         assert (
             my_asset(
