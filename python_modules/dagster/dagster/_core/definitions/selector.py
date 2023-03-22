@@ -1,9 +1,11 @@
+import json
 from typing import NamedTuple, Optional, Sequence
 
 import dagster._check as check
 from dagster._core.definitions.events import AssetKey
 from dagster._core.definitions.repository_definition import SINGLETON_REPOSITORY_NAME
 from dagster._serdes import create_snapshot_id, whitelist_for_serdes
+from dagster._serdes.utils import hash_str
 
 
 class PipelineSelector(
@@ -59,6 +61,9 @@ class PipelineSelector(
         return PipelineSelector(
             self.location_name, self.repository_name, self.pipeline_name, solid_selection
         )
+
+    def get_id(self) -> str:
+        return hash_str(json.dumps(self._asdict()))
 
 
 @whitelist_for_serdes
