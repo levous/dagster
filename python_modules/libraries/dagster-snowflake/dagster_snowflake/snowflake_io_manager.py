@@ -1,6 +1,8 @@
 from contextlib import contextmanager
 from typing import Mapping, Optional, Sequence, Type, cast
 
+from sqlalchemy.exc import ProgrammingError
+
 from dagster import Field, IOManagerDefinition, OutputContext, StringSource, io_manager
 from dagster._core.definitions.time_window_partitions import TimeWindow
 from dagster._core.storage.db_io_manager import (
@@ -10,7 +12,7 @@ from dagster._core.storage.db_io_manager import (
     TablePartitionDimension,
     TableSlice,
 )
-from sqlalchemy.exc import ProgrammingError
+from dagster._utils.backcompat import deprecation_warning
 
 from .resources import SnowflakeConnection
 
@@ -128,9 +130,23 @@ def build_snowflake_io_manager(
                 ),
                 is_required=False,
             ),
+            "time_data_to_string": Field(
+                bool,
+                default_value=False,
+                description=(
+                    "If using Pandas DataFrames, whether to convert time data to strings. If True,"
+                    " time data will be converted to strings when storing the dataframe and"
+                    " converted back to time data when loading the dataframe. If False, time data"
+                    " without a timezone will be set to UTC timezone to avoid a Snowflake bug. Defaults to False."
+                ),
+            ),
         }
     )
     def snowflake_io_manager(init_context):
+        if init_context.config["time_data_to_string"]:
+            deprecation_warning(
+                "Snowflake I/O manager config time_data_to_string", "2.0.0", "Convert existing tables to use timestamps and remove time_data_to_string configuration instead."
+            )
         return DbIOManager(
             type_handlers=type_handlers,
             db_client=SnowflakeDbClient(),
