@@ -35,12 +35,17 @@ def monitor_starting_run(
         msg = (
             f"Run {run.run_id} has been running for {time.time() - launch_time} seconds, which is"
             f" longer than the timeout of {instance.run_monitoring_start_timeout_seconds} seconds"
-            " to start. Marking run failed"
+            " to start. Marking run failed."
         )
-        logger.info(msg)
-        instance.report_run_failed(run, msg)
 
-    # TODO: consider attempting to resume the run, if the run worker is in a bad status
+        if instance.run_launcher.supports_check_run_worker_health:
+            run_worker_health = instance.run_launcher.check_run_worker_health(run)
+            if run_worker_health.msg:
+                msg = msg + f"\nRun worker status: {run_worker_health}"
+
+        logger.info(msg)
+
+        instance.report_run_failed(run, msg)
 
 
 def count_resume_run_attempts(instance: DagsterInstance, run_id: str) -> int:

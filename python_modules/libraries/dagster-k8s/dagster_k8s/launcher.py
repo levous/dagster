@@ -1,3 +1,4 @@
+import logging
 import sys
 from typing import Any, Mapping, Optional, Sequence
 
@@ -393,12 +394,37 @@ class K8sRunLauncher(RunLauncher, ConfigurableClass):
             run.status in (DagsterRunStatus.STARTED, DagsterRunStatus.CANCELING)
             and inactive_job_with_finished_pods
         ):
-            return CheckRunHealthResult(
-                WorkerStatus.FAILED, "Run has not completed but K8s job has no active pods"
+            result = CheckRunHealthResult(
+                WorkerStatus.FAILED, "Run has not completed but K8s job has no active pods."
             )
+        elif status.failed:
+            result = CheckRunHealthResult(WorkerStatus.FAILED, "K8s job failed.")
+        elif status.succeeded:
+            result = CheckRunHealthResult(WorkerStatus.SUCCESS)
+        else:
+            result = CheckRunHealthResult(WorkerStatus.RUNNING)
 
-        if status.failed:
-            return CheckRunHealthResult(WorkerStatus.FAILED, "K8s job failed")
-        if status.succeeded:
-            return CheckRunHealthResult(WorkerStatus.SUCCESS)
-        return CheckRunHealthResult(WorkerStatus.RUNNING)
+        if result.status == WorkerStatus.FAILED:
+            pod_name = job_name
+            namespace = container_context.namespace
+
+            full_msg = result.msg or ""
+
+            try:
+                pod_debug_info = self._api_client.get_pod_debug_info(pod_name, namespace)
+                full_msg = full_msg + "\n" + pod_debug_info
+            except Exception:
+                logging.exception(
+                    "Error trying to get debug information for failed k8s pod {pod_name}".format(
+                        pod_name=pod_name
+                    )
+                )
+
+            full_msg = (
+                full_msg
+                + f"\nFor more information about the failure, run `kubectl describe pod {pod_name}`"
+                " in your cluster."
+            )
+            result = CheckRunHealthResult(status=result.status, msg=full_msg)
+
+        return result
