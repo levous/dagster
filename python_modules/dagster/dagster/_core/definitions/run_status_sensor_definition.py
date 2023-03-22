@@ -25,6 +25,7 @@ from dagster._core.errors import (
     DagsterInvalidInvocationError,
     RunStatusSensorExecutionError,
     user_code_error_boundary,
+    DagsterInvariantViolationError,
 )
 from dagster._core.events import PIPELINE_RUN_STATUS_TO_EVENT_TYPE, DagsterEvent
 from dagster._core.instance import DagsterInstance
@@ -50,7 +51,7 @@ from .sensor_definition import (
     RunRequest,
     SensorDefinition,
     SensorEvaluationContext,
-    SensorTickResult,
+    SensorResult,
     SensorType,
     SkipReason,
 )
@@ -483,7 +484,7 @@ class RunStatusSensorDefinition(SensorDefinition):
 
         def _wrapped_fn(
             context: SensorEvaluationContext,
-        ) -> Iterator[Union[RunRequest, SkipReason, PipelineRunReaction, SensorTickResult]]:
+        ) -> Iterator[Union[RunRequest, SkipReason, PipelineRunReaction, SensorResult]]:
             # initiate the cursor to (most recent event id, current timestamp) when:
             # * it's the first time starting the sensor
             # * or, the cursor isn't in valid format (backcompt)
@@ -636,9 +637,17 @@ class RunStatusSensorDefinition(SensorDefinition):
                                 ).to_json()
                             )
 
-                            if isinstance(
+                            if isinstance(sensor_return, SensorResult):
+                                if sensor_return.cursor:
+                                    raise DagsterInvariantViolationError(
+                                        f"Error in run status sensor {name}: Sensor returned a"
+                                        " SensorResult with a cursor value. The cursor is managed"
+                                        " by the sensor and should not be modified by a user."
+                                    )
+                                yield sensor_return
+                            elif isinstance(
                                 sensor_return,
-                                (RunRequest, SkipReason, PipelineRunReaction, SensorTickResult),
+                                (RunRequest, SkipReason, PipelineRunReaction),
                             ):
                                 yield sensor_return
                             else:
